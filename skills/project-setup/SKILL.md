@@ -11,13 +11,15 @@ Configure a project for effective Claude Code usage by creating CLAUDE.md.
 
 **Core principle:** CLAUDE.md provides project context that persists across sessions.
 
-## What is CLAUDE.md?
+## Context Files
 
-A markdown file at `.claude/CLAUDE.md` (or project root) containing:
-- Project stack and structure
-- Common commands (test, lint, build)
-- Project-specific rules and conventions
-- Stop conditions and quality gates
+| File | Purpose | Location |
+|------|---------|----------|
+| `AGENTS.md` | Universal context for Cursor, Windsurf, Copilot | Project root |
+| `CLAUDE.md` | Claude Code specific instructions | Root or `.claude/` |
+| `.claude/` | Detailed context, sub-agents, commands | Hidden directory |
+
+**Contents:** Project stack, commands (test/lint/build), rules, stop conditions.
 
 ## When to Create
 
@@ -37,11 +39,24 @@ A markdown file at `.claude/CLAUDE.md` (or project root) containing:
 4. Note project structure
 ```
 
-### Step 2: Create CLAUDE.md
+### Step 2: Create Context Files
 
-Location: `.claude/CLAUDE.md` or `CLAUDE.md` at root
+**Recommended structure:**
+```
+project/
+├── AGENTS.md          # Reference to .claude/
+├── CLAUDE.md          # Reference to .claude/
+└── .claude/
+    └── CLAUDE.md      # Detailed instructions
+```
 
-**Minimal template:**
+**Root AGENTS.md and CLAUDE.md (reference files):**
+```markdown
+# Project Context
+@.claude/CLAUDE.md
+```
+
+**Detailed .claude/CLAUDE.md:**
 ```markdown
 # Project: [Name]
 
@@ -54,6 +69,12 @@ Location: `.claude/CLAUDE.md` or `CLAUDE.md` at root
 [Project-specific constraints]
 ```
 
+**Alternative:** Symlink (Unix/macOS only)
+```bash
+ln -s .claude/CLAUDE.md AGENTS.md
+ln -s .claude/CLAUDE.md CLAUDE.md
+```
+
 **Full template:** See [references/claude-md-template.md](references/claude-md-template.md)
 
 ### Step 3: Verify
@@ -64,7 +85,7 @@ Location: `.claude/CLAUDE.md` or `CLAUDE.md` at root
 3. Test that context loads in new session
 ```
 
-## CLAUDE.md Sections
+## Context File Sections
 
 | Section | Purpose | Required |
 |---------|---------|----------|
@@ -73,6 +94,15 @@ Location: `.claude/CLAUDE.md` or `CLAUDE.md` at root
 | Stack | Language, framework | Recommended |
 | Rules | Project constraints | Recommended |
 | Stop conditions | When to ask human | Optional |
+
+## Multi-Tool Compatibility
+
+Reference method uses `@path` syntax to point to shared instructions:
+- Works with Claude Code, Cursor, Windsurf
+- Single source of truth in `.claude/CLAUDE.md`
+- Root files are lightweight pointers
+
+See [references/multi-tool-setup.md](references/multi-tool-setup.md) for details.
 
 ## Common Patterns
 
@@ -111,3 +141,4 @@ Stop if: 3 failures, breaking changes, security issues
 
 **See also:**
 - [Full CLAUDE.md Template](references/claude-md-template.md)
+- [Multi-Tool Setup](references/multi-tool-setup.md)

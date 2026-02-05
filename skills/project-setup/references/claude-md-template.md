@@ -1,5 +1,23 @@
 # CLAUDE.md Template for Autonomous Work
 
+## Root Reference Files
+
+Create these at project root to support multiple AI tools:
+
+**AGENTS.md:**
+```markdown
+# Agent Instructions
+@.claude/CLAUDE.md
+```
+
+**CLAUDE.md:**
+```markdown
+# Project Context
+@.claude/CLAUDE.md
+```
+
+## Detailed Context File
+
 Copy and customize for your project's `.claude/CLAUDE.md`:
 
 ```markdown
@@ -69,8 +87,18 @@ Stop if: 3 failures, breaking changes, security issues
 
 ## Setup Commands
 
-Create the directory structure:
-
+**Unix/macOS:**
 ```bash
-mkdir -p docs/plans/{1_backlog,2_active,3_complete}
+mkdir -p .claude docs/plans/{1_backlog,2_active,3_complete}
+echo -e "# Agent Instructions\n@.claude/CLAUDE.md" > AGENTS.md
+echo -e "# Project Context\n@.claude/CLAUDE.md" > CLAUDE.md
+# Then create .claude/CLAUDE.md with template above
+```
+
+**Windows PowerShell:**
+```powershell
+New-Item -ItemType Directory -Force -Path .claude, docs/plans/1_backlog, docs/plans/2_active, docs/plans/3_complete
+"# Agent Instructions`n@.claude/CLAUDE.md" | Set-Content AGENTS.md
+"# Project Context`n@.claude/CLAUDE.md" | Set-Content CLAUDE.md
+# Then create .claude/CLAUDE.md with template above
 ```
