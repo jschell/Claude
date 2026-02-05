@@ -48,7 +48,7 @@ In Progress → Done (when plan moves to 3_complete/)
 
 ## Alternatives
 
-If using GitHub issues or project boards instead:
+If using issue trackers instead (GitHub, GitLab, Jira, etc.):
 - Label `in-progress` for current feature
 - Reference plan in issue comments
 - Close issue when complete

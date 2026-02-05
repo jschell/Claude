@@ -55,11 +55,21 @@ git merge <feature-branch>
 git branch -d <feature-branch>
 ```
 
-**Option 2: Push and Create PR**
+**Option 2: Push and Create PR/MR**
 ```bash
 git push -u origin <feature-branch>
-gh pr create --title "<title>" --body "..."
 ```
+
+Create PR/MR using your platform:
+
+| Platform | Command |
+|----------|---------|
+| GitHub | `gh pr create --title "..." --body "..."` |
+| GitLab | `glab mr create --title "..." --description "..."` |
+| Bitbucket | `bb pr create` or web UI |
+| Azure DevOps | `az repos pr create --title "..."` |
+
+If CLI unavailable, use platform web UI.
 
 **Option 3: Keep As-Is**
 Report location, don't cleanup.
