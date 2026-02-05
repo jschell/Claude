@@ -1,7 +1,7 @@
 #!/bin/bash
 # optimize-skill.sh - Analyze skill for optimization opportunities
 
-set -e
+# Don't use set -e as grep returns 1 when no match found
 
 SKILL_PATH="$1"
 
@@ -41,17 +41,17 @@ echo "=== Structure Analysis ==="
 echo ""
 echo "=== Bloat Indicators ==="
 
-IMPORTANT_COUNT=$(grep -ic "important" "$SKILL_PATH/SKILL.md" 2>/dev/null || echo "0")
-[ "$IMPORTANT_COUNT" -gt 0 ] && echo "⚠ Contains 'important' ($IMPORTANT_COUNT times)"
+IMPORTANT_COUNT=$(grep -ic "important" "$SKILL_PATH/SKILL.md" 2>/dev/null | head -1 || echo "0")
+[ -n "$IMPORTANT_COUNT" ] && [ "$IMPORTANT_COUNT" -gt 0 ] 2>/dev/null && echo "⚠ Contains 'important' ($IMPORTANT_COUNT times)"
 
-INSTALL_COUNT=$(grep -ic "install" "$SKILL_PATH/SKILL.md" 2>/dev/null || echo "0")
-[ "$INSTALL_COUNT" -gt 0 ] && echo "⚠ Contains installation references ($INSTALL_COUNT times)"
+INSTALL_COUNT=$(grep -ic "install" "$SKILL_PATH/SKILL.md" 2>/dev/null | head -1 || echo "0")
+[ -n "$INSTALL_COUNT" ] && [ "$INSTALL_COUNT" -gt 0 ] 2>/dev/null && echo "⚠ Contains installation references ($INSTALL_COUNT times)"
 
-EXAMPLE_COUNT=$(grep -ic "for example" "$SKILL_PATH/SKILL.md" 2>/dev/null || echo "0")
-[ "$EXAMPLE_COUNT" -gt 0 ] && echo "⚠ Contains 'for example' ($EXAMPLE_COUNT times)"
+EXAMPLE_COUNT=$(grep -ic "for example" "$SKILL_PATH/SKILL.md" 2>/dev/null | head -1 || echo "0")
+[ -n "$EXAMPLE_COUNT" ] && [ "$EXAMPLE_COUNT" -gt 0 ] 2>/dev/null && echo "⚠ Contains 'for example' ($EXAMPLE_COUNT times)"
 
-FIRST_NEED=$(grep -Eic "first.*need|need.*first" "$SKILL_PATH/SKILL.md" 2>/dev/null || echo "0")
-[ "$FIRST_NEED" -gt 0 ] && echo "⚠ Contains 'first...need' phrasing ($FIRST_NEED times)"
+FIRST_NEED=$(grep -Eic "first.*need|need.*first" "$SKILL_PATH/SKILL.md" 2>/dev/null | head -1 || echo "0")
+[ -n "$FIRST_NEED" ] && [ "$FIRST_NEED" -gt 0 ] 2>/dev/null && echo "⚠ Contains 'first...need' phrasing ($FIRST_NEED times)"
 
 CODE_BLOCKS=$(grep -c '```' "$SKILL_PATH/SKILL.md" 2>/dev/null || echo "0")
 CODE_BLOCKS=$((CODE_BLOCKS / 2))
