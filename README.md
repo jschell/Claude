@@ -86,4 +86,6 @@ skills/
 
 ## License
 
-Skills from external sources retain their original licenses. Custom skills are provided as-is.
+MIT License. See [LICENSE](LICENSE).
+
+Skills from external sources (obra/superpowers, anthropics/skills) retain their original licenses.
