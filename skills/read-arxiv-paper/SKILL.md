@@ -33,18 +33,16 @@ Extract ID: `2601.07372` (ignore version suffix)
 
 ## Fetch & Extract
 
-```bash
-arxiv_id="2601.07372"
-cache="${ARXIV_CACHE:-~/.cache/arxiv-papers}"
-mkdir -p "$cache/$arxiv_id"
-
-# Download if not cached
-if [ ! -d "$cache/$arxiv_id/extracted" ]; then
-  curl -L "https://arxiv.org/src/$arxiv_id" -o "$cache/$arxiv_id/source.tar.gz"
-  mkdir -p "$cache/$arxiv_id/extracted"
-  tar -xzf "$cache/$arxiv_id/source.tar.gz" -C "$cache/$arxiv_id/extracted"
-fi
 ```
+python scripts/fetch-arxiv.py <arxiv-id-or-url>
+```
+
+Cache locations (auto-detected):
+- Linux: `~/.cache/arxiv-papers/`
+- macOS: `~/Library/Caches/arxiv-papers/`
+- Windows: `%LOCALAPPDATA%\arxiv-papers\`
+
+Override with `ARXIV_CACHE` environment variable.
 
 ## Find Entrypoint
 
@@ -98,4 +96,5 @@ Search order:
 ## See Also
 
 - [LaTeX Patterns](references/latex-patterns.md)
-- [Fetch Script](scripts/fetch-arxiv.sh)
+- [Fetch Script (Python)](scripts/fetch-arxiv.py) - cross-platform, recommended
+- [Fetch Script (Bash)](scripts/fetch-arxiv.sh) - Unix/macOS only

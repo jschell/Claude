@@ -12,10 +12,11 @@ Reduces skill token consumption while preserving functionality.
 ## Process
 
 ### Phase 1: Analyze
-```bash
-# Estimate tokens (words * 1.3)
-wc -w [skill-path]/SKILL.md
 ```
+python scripts/optimize-skill.py [skill-path]
+```
+
+Token estimation: words × 1.3 ≈ tokens
 
 **Check for bloat:**
 - Explanations of common concepts (PDFs, APIs, JSON)
@@ -58,14 +59,11 @@ wc -w [skill-path]/SKILL.md
 
 ### Phase 3: Verify
 
-```bash
-# Calculate savings
-original=$(wc -w [backup] | awk '{print int($1 * 1.3)}')
-new=$(wc -w SKILL.md | awk '{print int($1 * 1.3)}')
-echo "Reduced: $original → $new tokens ($(echo "scale=0; ($original-$new)*100/$original" | bc)%)"
+```
+python scripts/optimize-skill.py [skill-path]
 ```
 
-Test with fresh prompt to verify Claude still completes tasks correctly.
+Compare before/after token counts. Test with fresh prompt to verify Claude still completes tasks correctly.
 
 ### Phase 4: Report
 
@@ -112,4 +110,5 @@ Generate summary:
 ## References
 
 - [Quick Reference](references/quick-ref.md)
-- [Analysis Script](scripts/optimize-skill.sh)
+- [Analysis Script (Python)](scripts/optimize-skill.py) - cross-platform, recommended
+- [Analysis Script (Bash)](scripts/optimize-skill.sh) - Unix/macOS only

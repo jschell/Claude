@@ -6,21 +6,22 @@ Repository of optimized skills for Claude Code.
 ## Commands
 
 ### Analyze a skill
-```bash
-bash skills/skill-optimizer/scripts/optimize-skill.sh skills/[skill-name]
+```
+python skills/skill-optimizer/scripts/optimize-skill.py skills/[skill-name]
 ```
 
-### Analyze all skills
+### Analyze all skills (Unix/macOS)
 ```bash
 for skill in skills/*/; do
-  echo "=== $(basename $skill) ==="
-  bash skills/skill-optimizer/scripts/optimize-skill.sh "$skill" 2>/dev/null | grep -E "(tokens|🟢|🟡|🔴)"
+  python skills/skill-optimizer/scripts/optimize-skill.py "$skill" 2>/dev/null | grep -E "(Skill:|tokens|🟢|🟡|🔴)"
 done
 ```
 
-### Count total tokens
-```bash
-find skills -name "SKILL.md" -exec wc -w {} + | tail -1 | awk '{print int($1 * 1.3) " total tokens"}'
+### Analyze all skills (Windows PowerShell)
+```powershell
+Get-ChildItem skills -Directory | ForEach-Object {
+  python skills/skill-optimizer/scripts/optimize-skill.py $_.FullName 2>$null | Select-String "(Skill:|tokens|🟢|🟡|🔴)"
+}
 ```
 
 ## Rules
