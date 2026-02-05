@@ -99,6 +99,8 @@ docs/plans/
 - **finishing-a-development-branch** - Complete work
 - **verification-before-completion** - Validate steps
 
+**Prerequisite:**
+- **project-setup** - CLAUDE.md with commands and conventions
+
 **See also:**
 - [Plan Lifecycle Details](references/plan-lifecycle.md)
-- [CLAUDE.md Template](references/claude-md-template.md)
