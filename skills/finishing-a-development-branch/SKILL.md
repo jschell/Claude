@@ -122,3 +122,6 @@ git worktree remove <worktree-path>
 
 **Pairs with:**
 - **using-git-worktrees** - Cleans up worktree created there
+
+**See also:**
+- [Platform CLI Setup](references/platform-cli-setup.md) - Install and configure gh, glab, az
