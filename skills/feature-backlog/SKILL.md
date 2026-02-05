@@ -17,7 +17,7 @@ Simple format for tracking features through autonomous work phases.
 # Feature Backlog
 
 ## In Progress
-- [ ] Current feature → plans/feature-name.md
+- [ ] Current feature → docs/plans/2_active/feature-name.md
 
 ## Todo
 - [ ] Next feature
@@ -32,19 +32,18 @@ Simple format for tracking features through autonomous work phases.
 | Rule | Why |
 |------|-----|
 | One in-progress at a time | Prevents scope creep, context loss |
-| Link to plan when planning starts | Connects backlog to execution |
+| Link to plan in 2_active/ | Connects backlog to execution |
 | Mark done only after tests pass | Ensures quality gate |
 | Add completion date | Tracks velocity |
 
 ## State Transitions
 
 ```
-Todo → In Progress (when planning starts)
-       Link plan file
+Todo → In Progress (when plan moves to 2_active/)
+       Link to docs/plans/2_active/feature.md
 
-In Progress → Done (when all tests pass)
+In Progress → Done (when plan moves to 3_complete/)
               Add completion date
-              Archive or delete plan
 ```
 
 ## Alternatives

@@ -13,24 +13,26 @@ Copy and customize for your project's `.claude/CLAUDE.md`:
 ## Commands
 
 ### Test
-```bash
 npm test          # or: pytest
-```
 
 ### Lint
-```bash
 npm run lint      # or: ruff check .
-```
 
 ### Build
-```bash
 npm run build     # or: python -m build
-```
 
 ## Autonomous Work Settings
 
-### Plan Location
-plans/
+### Plan Directories
+docs/plans/
+├── 1_backlog/   # New plans awaiting review
+├── 2_active/    # Plan being executed (max 1)
+└── 3_complete/  # Verified complete plans
+
+### Plan Workflow
+1. Claude creates plan → saves to 1_backlog/
+2. Human reviews → moves to 2_active/ when approved
+3. Claude executes → moves to 3_complete/ when verified
 
 ### Backlog Location
 features.txt
@@ -60,7 +62,15 @@ For simpler projects:
 ## Lint: `npm run lint`
 
 ## Autonomous Work
-- Plans: plans/
-- Backlog: features.txt
-- Stop if: 3 failures, breaking changes, security issues
+Plans: docs/plans/{1_backlog,2_active,3_complete}/
+Backlog: features.txt
+Stop if: 3 failures, breaking changes, security issues
+```
+
+## Setup Commands
+
+Create the directory structure:
+
+```bash
+mkdir -p docs/plans/{1_backlog,2_active,3_complete}
 ```

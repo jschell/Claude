@@ -13,6 +13,24 @@ Orchestrate plan-then-execute workflow for feature implementation.
 
 **Announce at start:** "I'm using the autonomous-work skill to start this session."
 
+## Plan Directories
+
+```
+docs/plans/
+├── 1_backlog/     # New plans awaiting review
+├── 2_active/      # Approved plan being executed (max 1)
+└── 3_complete/    # Verified complete plans
+```
+
+**State transitions:**
+```
+1_backlog → 2_active   (human approves)
+2_active → 3_complete  (tests pass, verified)
+2_active → 1_backlog   (blocked, needs rework)
+```
+
+**Rule:** Only ONE plan in `2_active/` at a time.
+
 ## The Process
 
 ### Phase 1: Baseline Check
@@ -20,36 +38,39 @@ Orchestrate plan-then-execute workflow for feature implementation.
 ```
 1. Verify clean git state (no uncommitted changes)
 2. Run test suite - MUST pass before new work
-3. Check for existing plans in plans/ directory
+3. Check for plan in docs/plans/2_active/
 ```
 
-**If tests fail:** Fix before proceeding. Do not start new features on broken baseline.
+**If tests fail:** Fix before proceeding.
 
 ### Phase 2: Planning
 
-**If plan exists:** Skip to Phase 3.
+**If plan in 2_active/:** Skip to Phase 3.
 
-**If no plan:**
-1. Identify next feature from backlog (features.txt or issues)
-2. Use **writing-plans** skill to create detailed plan
-3. Save to plans/[feature-name].md
+**If no active plan:**
+1. Identify next feature from backlog
+2. Use **writing-plans** skill
+3. Save to `docs/plans/1_backlog/[feature-name].md`
 4. Present summary for human review
-5. **WAIT for approval** before Phase 3
+5. **WAIT** - Human moves to `2_active/` when approved
 
 ### Phase 3: Execution
 
-1. Use **executing-plans** skill on active plan
-2. Follow plan step-by-step with test validation
-3. Commit after each successful step
-4. When complete: Use **finishing-a-development-branch** skill
+1. Read plan from `docs/plans/2_active/`
+2. Use **executing-plans** skill
+3. Test and commit after each step
+4. When complete:
+   - Run **verification-before-completion**
+   - Move plan to `docs/plans/3_complete/`
+   - Use **finishing-a-development-branch**
 
 ### Phase 4: Continue or Stop
 
 | Condition | Action |
 |-----------|--------|
-| More features in backlog | Return to Phase 2 |
-| Blocker encountered | Stop, report to human |
-| All features complete | Summarize session |
+| More features | Return to Phase 2 |
+| Blocker | Stop, report |
+| All done | Summarize session |
 
 ## Stop Conditions
 
@@ -59,49 +80,25 @@ Orchestrate plan-then-execute workflow for feature implementation.
 - Security implications discovered
 - Scope significantly larger than expected
 - Architectural decisions needed
-- Ambiguous requirements
-
-**Do not guess or proceed through blockers.**
-
-## Session Tracking
-
-Update progress after each phase:
-```
-[timestamp] - Phase N complete
-- What was done
-- Current state
-- Next action
-```
 
 ## Quick Reference
 
 | State | Action |
 |-------|--------|
-| Dirty git state | Commit or stash first |
 | Tests failing | Fix before new work |
-| No plan exists | Phase 2: Create with writing-plans |
-| Plan exists, unapproved | Wait for human approval |
-| Plan approved | Phase 3: Execute with executing-plans |
-| Step fails 3x | Stop, ask human |
-| Feature complete | Phase 4: Next or finish |
-
-## Red Flags
-
-**Never:**
-- Start new feature with failing tests
-- Execute unapproved plans
-- Work on multiple features simultaneously
-- Skip test validation between steps
-- Proceed through blockers without asking
+| Nothing in 2_active | Create plan → 1_backlog |
+| Plan in 1_backlog | Wait for human to approve |
+| Plan in 2_active | Execute with executing-plans |
+| Execution complete | Verify → move to 3_complete |
 
 ## Integration
 
 **Uses:**
-- **writing-plans** - Create implementation plans
-- **executing-plans** - Execute approved plans
-- **finishing-a-development-branch** - Complete feature work
-- **verification-before-completion** - Validate each step
-- **test-driven-development** - Within execution
+- **writing-plans** - Create plans
+- **executing-plans** - Execute plans
+- **finishing-a-development-branch** - Complete work
+- **verification-before-completion** - Validate steps
 
-**Optional:**
-- **feature-backlog** - Track feature status
+**See also:**
+- [Plan Lifecycle Details](references/plan-lifecycle.md)
+- [CLAUDE.md Template](references/claude-md-template.md)
