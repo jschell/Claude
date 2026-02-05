@@ -60,16 +60,25 @@ git branch -d <feature-branch>
 git push -u origin <feature-branch>
 ```
 
-Create PR/MR using your platform:
+Detect platform and create PR/MR:
+```bash
+remote=$(git remote get-url origin 2>/dev/null)
+case "$remote" in
+  *github.com*)    gh pr create --title "..." --body "..." ;;
+  *gitlab.com*)    glab mr create --title "..." --description "..." ;;
+  *bitbucket*)     echo "Create PR via Bitbucket web UI" ;;
+  *dev.azure.com*) az repos pr create --title "..." ;;
+  *)               echo "Unknown platform - use web UI" ;;
+esac
+```
 
-| Platform | Command |
-|----------|---------|
-| GitHub | `gh pr create --title "..." --body "..."` |
-| GitLab | `glab mr create --title "..." --description "..."` |
-| Bitbucket | `bb pr create` or web UI |
-| Azure DevOps | `az repos pr create --title "..."` |
+Override with `GIT_PLATFORM` env var if needed.
 
-If CLI unavailable, use platform web UI.
+| Platform | CLI |
+|----------|-----|
+| GitHub | `gh` |
+| GitLab | `glab` |
+| Azure DevOps | `az repos` |
 
 **Option 3: Keep As-Is**
 Report location, don't cleanup.
