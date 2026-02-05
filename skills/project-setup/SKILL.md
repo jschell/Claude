@@ -16,8 +16,7 @@ Configure a project for effective Claude Code usage by creating CLAUDE.md.
 | File | Purpose | Location |
 |------|---------|----------|
 | `AGENTS.md` | Universal context for Cursor, Windsurf, Copilot | Project root |
-| `CLAUDE.md` | Claude Code specific instructions | Root or `.claude/` |
-| `.claude/` | Detailed context, sub-agents, commands | Hidden directory |
+| `.claude/CLAUDE.md` | Claude Code instructions (auto-discovered) | `.claude/` directory |
 
 **Contents:** Project stack, commands (test/lint/build), rules, stop conditions.
 
@@ -44,19 +43,18 @@ Configure a project for effective Claude Code usage by creating CLAUDE.md.
 **Recommended structure:**
 ```
 project/
-├── AGENTS.md          # Reference to .claude/
-├── CLAUDE.md          # Reference to .claude/
+├── AGENTS.md          # For Cursor/Windsurf/Copilot
 └── .claude/
-    └── CLAUDE.md      # Detailed instructions
+    └── CLAUDE.md      # Detailed instructions (Claude Code reads automatically)
 ```
 
-**Root AGENTS.md and CLAUDE.md (reference files):**
+**AGENTS.md (root):**
 ```markdown
-# Project Context
+# Agent Instructions
 @.claude/CLAUDE.md
 ```
 
-**Detailed .claude/CLAUDE.md:**
+**.claude/CLAUDE.md:**
 ```markdown
 # Project: [Name]
 
@@ -69,11 +67,7 @@ project/
 [Project-specific constraints]
 ```
 
-**Alternative:** Symlink (Unix/macOS only)
-```bash
-ln -s .claude/CLAUDE.md AGENTS.md
-ln -s .claude/CLAUDE.md CLAUDE.md
-```
+No root `CLAUDE.md` needed - Claude Code auto-discovers `.claude/CLAUDE.md`.
 
 **Full template:** See [references/claude-md-template.md](references/claude-md-template.md)
 
@@ -97,10 +91,9 @@ ln -s .claude/CLAUDE.md CLAUDE.md
 
 ## Multi-Tool Compatibility
 
-Reference method uses `@path` syntax to point to shared instructions:
-- Works with Claude Code, Cursor, Windsurf
-- Single source of truth in `.claude/CLAUDE.md`
-- Root files are lightweight pointers
+- Claude Code: Auto-reads `.claude/CLAUDE.md`
+- Other tools: Use `AGENTS.md` with `@.claude/CLAUDE.md` reference
+- Single source of truth, no duplicate file names
 
 See [references/multi-tool-setup.md](references/multi-tool-setup.md) for details.
 

@@ -6,64 +6,50 @@ Configure a project to work with multiple AI coding assistants.
 
 | File | Tool Support | Purpose |
 |------|--------------|---------|
-| `AGENTS.md` | Cursor, Windsurf, Copilot | Vendor-neutral context |
-| `CLAUDE.md` | Claude Code | Claude-specific instructions |
-| `.claude/` | Claude Code | Detailed context, sub-agents |
+| `AGENTS.md` | Cursor, Windsurf, Copilot | Vendor-neutral context (root) |
+| `.claude/CLAUDE.md` | Claude Code | Claude-specific instructions (auto-discovered) |
 
 ## Recommended Structure
 
 ```
 project/
-├── AGENTS.md              # Points to shared context
-├── CLAUDE.md              # Points to shared context
+├── AGENTS.md              # For other AI tools
 └── .claude/
-    └── CLAUDE.md          # Detailed instructions (single source)
+    └── CLAUDE.md          # Single source (Claude Code auto-reads)
 ```
 
-## Method 1: Reference Files (Recommended)
+No root `CLAUDE.md` needed - avoids duplicate file names.
 
-Root-level files use `@path` syntax to reference shared content.
+## Setup Method
 
-**AGENTS.md (root):**
+**AGENTS.md (root)** - references the shared context:
 ```markdown
 # Agent Instructions
 @.claude/CLAUDE.md
 ```
 
-**CLAUDE.md (root):**
-```markdown
-# Project Context
-@.claude/CLAUDE.md
-```
+**.claude/CLAUDE.md** - contains all detailed instructions.
 
 **Benefits:**
-- Works on all platforms (Windows, macOS, Linux)
+- Claude Code auto-discovers `.claude/CLAUDE.md`
+- Other tools use `AGENTS.md` reference
 - Single source of truth
-- Can add tool-specific content above/below reference
+- No duplicate `CLAUDE.md` files
+- Works on all platforms
 
-## Method 2: Symbolic Links
+## Alternative: Symbolic Link
 
-Create symlinks pointing to shared context.
-
-**Unix/macOS:**
+For `AGENTS.md` only (Unix/macOS):
 ```bash
 ln -s .claude/CLAUDE.md AGENTS.md
-ln -s .claude/CLAUDE.md CLAUDE.md
 ```
 
 **Windows (requires admin or developer mode):**
 ```powershell
 New-Item -ItemType SymbolicLink -Path AGENTS.md -Target .claude\CLAUDE.md
-New-Item -ItemType SymbolicLink -Path CLAUDE.md -Target .claude\CLAUDE.md
 ```
 
-**Benefits:**
-- True single file (edits sync automatically)
-- No reference syntax needed
-
-**Drawbacks:**
-- Windows symlinks require elevated permissions
-- Some git clients handle symlinks poorly
+**Note:** Symlinks can have issues with some git clients.
 
 ## Tool-Specific Notes
 
@@ -87,8 +73,6 @@ New-Item -ItemType SymbolicLink -Path CLAUDE.md -Target .claude\CLAUDE.md
 
 ## Setup Script
 
-Create structure with reference files:
-
 **Unix/macOS:**
 ```bash
 mkdir -p .claude
@@ -104,7 +88,6 @@ cat > .claude/CLAUDE.md << 'EOF'
 EOF
 
 echo -e "# Agent Instructions\n@.claude/CLAUDE.md" > AGENTS.md
-echo -e "# Project Context\n@.claude/CLAUDE.md" > CLAUDE.md
 ```
 
 **Windows PowerShell:**
@@ -122,5 +105,4 @@ New-Item -ItemType Directory -Force -Path .claude
 "@ | Set-Content .claude\CLAUDE.md
 
 "# Agent Instructions`n@.claude/CLAUDE.md" | Set-Content AGENTS.md
-"# Project Context`n@.claude/CLAUDE.md" | Set-Content CLAUDE.md
 ```

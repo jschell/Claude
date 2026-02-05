@@ -1,22 +1,17 @@
 # CLAUDE.md Template for Autonomous Work
 
-## Root Reference Files
+## Multi-Tool Support
 
-Create these at project root to support multiple AI tools:
+Create `AGENTS.md` at project root for Cursor/Windsurf/Copilot:
 
-**AGENTS.md:**
 ```markdown
 # Agent Instructions
 @.claude/CLAUDE.md
 ```
 
-**CLAUDE.md:**
-```markdown
-# Project Context
-@.claude/CLAUDE.md
-```
+No root `CLAUDE.md` needed - Claude Code auto-discovers `.claude/CLAUDE.md`.
 
-## Detailed Context File
+## Main Context File
 
 Copy and customize for your project's `.claude/CLAUDE.md`:
 
@@ -91,7 +86,6 @@ Stop if: 3 failures, breaking changes, security issues
 ```bash
 mkdir -p .claude docs/plans/{1_backlog,2_active,3_complete}
 echo -e "# Agent Instructions\n@.claude/CLAUDE.md" > AGENTS.md
-echo -e "# Project Context\n@.claude/CLAUDE.md" > CLAUDE.md
 # Then create .claude/CLAUDE.md with template above
 ```
 
@@ -99,6 +93,5 @@ echo -e "# Project Context\n@.claude/CLAUDE.md" > CLAUDE.md
 ```powershell
 New-Item -ItemType Directory -Force -Path .claude, docs/plans/1_backlog, docs/plans/2_active, docs/plans/3_complete
 "# Agent Instructions`n@.claude/CLAUDE.md" | Set-Content AGENTS.md
-"# Project Context`n@.claude/CLAUDE.md" | Set-Content CLAUDE.md
 # Then create .claude/CLAUDE.md with template above
 ```
