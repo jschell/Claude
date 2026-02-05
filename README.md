@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 8,713 tokens across 19 skills** (avg 459 tokens/skill)
+**Total: 9,134 tokens across 20 skills** (avg 457 tokens/skill)
 
 ## Quick Start
 
@@ -50,6 +50,7 @@ ln -s $(pwd)/skills ~/.claude/skills
 | Skill | Tokens | Description |
 |-------|--------|-------------|
 | [pdf](skills/pdf/) | 893 | PDF processing with Python/CLI |
+| [writing-clearly-and-concisely](skills/writing-clearly-and-concisely/) | 421 | Strunk's Elements of Style for prose |
 | [using-git-worktrees](skills/using-git-worktrees/) | 482 | Isolated workspace setup |
 | [using-superpowers](skills/using-superpowers/) | 291 | Skill invocation protocol |
 | [writing-skills](skills/writing-skills/) | 522 | Create new skills (TDD for docs) |
@@ -83,6 +84,7 @@ skills/
 ## Sources
 
 - **obra/superpowers** - Battle-tested development workflows
+- **obra/the-elements-of-style** - Writing clarity (optimized from 55k→2.4k tokens)
 - **anthropics/skills** - Official Anthropic skill examples
 - **Custom** - autonomous-work, feature-backlog, project-setup, skill-optimizer
 
