@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 9,520 tokens across 21 skills** (avg 453 tokens/skill)
+**Total: 11,123 tokens across 24 skills** (avg 463 tokens/skill)
 
 ## Quick Start
 
@@ -44,6 +44,14 @@ ln -s $(pwd)/skills ~/.claude/skills
 | [systematic-debugging](skills/systematic-debugging/) | 590 | Root cause investigation |
 | [receiving-code-review](skills/receiving-code-review/) | 409 | Technical evaluation of feedback |
 | [requesting-code-review](skills/requesting-code-review/) | 260 | Structured review requests |
+
+### Packet Capture
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [packet-capture](skills/packet-capture/) | 452 | Tshark fundamentals, installation, filters (parent) |
+| [network-capture](skills/network-capture/) | 592 | Network traffic - HTTP, DNS, TCP debugging |
+| [usb-capture](skills/usb-capture/) | 559 | USB device traffic capture and debugging |
 
 ### Tools & Reference
 
