@@ -34,10 +34,11 @@ bash scripts/search-archive.sh YOUR_URL
 | Latest snapshot | `curl -s "https://archive.org/wayback/available?url=URL"` |
 | All snapshots | CDX API → see scripts/search-archive.sh |
 | Date range | CDX API with from/to params |
-| Download content | `curl -sL "https://web.archive.org/web/TIMESTAMP/URL"` |
+| Download content | `bash scripts/download-snapshot.sh URL [timestamp]` |
 
 ## Output Format
 
+### Search
 ```
 Found 127 snapshots for: example.com
   Oldest: 2010-03-15
@@ -46,6 +47,13 @@ Found 127 snapshots for: example.com
 Recent snapshots:
 → 20240115: https://web.archive.org/web/20240115120045/example.com
 → 20231220: https://web.archive.org/web/20231220093012/example.com
+```
+
+### Download
+Files named as `{timestamp}_{original-filename}`, falling back to `{timestamp}_{domain}.{ext}`:
+```
+✓ Downloaded to: 20251216120030_report.pdf
+✓ Downloaded to: 20260206155300_example.com.html
 ```
 
 ## When NOT to Use
