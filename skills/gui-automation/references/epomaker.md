@@ -1,6 +1,16 @@
 # Epomaker Keyboard Software Automation
 
-Windows-only automation for Epomaker RT keyboard configuration software.
+Windows automation for Epomaker keyboard configuration software.
+
+> **macOS:** Driver available (v3.0.27 / v2.1.90) but automation not yet documented. See [platform-tools.md](platform-tools.md) for AppleScript basics. *Contributions welcome.*
+
+## Driver Versions
+
+| Driver | Version | Keyboards | Download |
+|--------|---------|-----------|----------|
+| Driver 3.0 | v3.0.28 | G84 HE, HE68 Lite, HE75 Mag, RT85, RT100 Pro | [epomaker.com](https://epomaker.com/blogs/software/epomaker-driver-3-0) |
+| Driver (Standard) | V2.1.92 | Older models | [epomaker.com](https://epomaker.com/blogs/software/epomaker-driver) |
+| Model-specific | Various | TH99, TH108 Pro, F75, F108 PRO, etc. | [All Software](https://epomaker.com/blogs/software) |
 
 ## Prerequisites
 
@@ -160,9 +170,10 @@ Save coordinates for your specific setup in a config file:
 
 ## Version Compatibility
 
-| Epomaker RT Version | Tested | Notes |
-|---------------------|--------|-------|
-| 1.x | Untested | Older UI layout |
-| 2.x | Target | Current version |
+| Driver | Version | Tested | Notes |
+|--------|---------|--------|-------|
+| Driver 3.0 | v3.0.x | Target | RT85, RT100 Pro, HE series |
+| Standard | V2.1.x | Untested | May have different UI layout |
+| Model-specific | Various | Untested | Check keyboard-specific driver |
 
 > **Important:** UI layouts change between versions. Re-capture coordinates after updates.
