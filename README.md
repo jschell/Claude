@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 11,123 tokens across 24 skills** (avg 463 tokens/skill)
+**Total: 11,607 tokens across 26 skills** (avg 446 tokens/skill)
 
 ## Quick Start
 
@@ -52,6 +52,13 @@ ln -s $(pwd)/skills ~/.claude/skills
 | [packet-capture](skills/packet-capture/) | 452 | Tshark fundamentals, installation, filters (parent) |
 | [network-capture](skills/network-capture/) | 592 | Network traffic - HTTP, DNS, TCP debugging |
 | [usb-capture](skills/usb-capture/) | 559 | USB device traffic capture and debugging |
+
+### Internet Archive
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [archive-url](skills/archive-url/) | 209 | Archive URLs to Wayback Machine for preservation |
+| [archive-retrieve](skills/archive-retrieve/) | 275 | Retrieve/search archived versions of URLs |
 
 ### Tools & Reference
 
