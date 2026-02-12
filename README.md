@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 11,607 tokens across 26 skills** (avg 446 tokens/skill)
+**Total: 12,042 tokens across 27 skills** (avg 446 tokens/skill)
 
 ## Quick Start
 
@@ -23,6 +23,12 @@ ln -s $(pwd)/skills ~/.claude/skills
 | [autonomous-work](skills/autonomous-work/) | 510 | Plan-then-execute workflow with human checkpoints |
 | [project-setup](skills/project-setup/) | 482 | Create/configure CLAUDE.md for projects |
 | [feature-backlog](skills/feature-backlog/) | 262 | Simple feature tracking format |
+
+### Codebase Navigation
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [pyramid-navigator](skills/pyramid-navigator/) | 435 | Progressive codebase exploration via multi-level summaries |
 
 ### Planning & Execution (from obra/superpowers)
 
