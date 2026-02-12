@@ -406,9 +406,12 @@ class CodeParser:
 # ─────────────────────────────────────────────
 
 _SUMMARY_PROMPT = """\
-Summarize the following code element at multiple word-count levels.
-Return ONLY a JSON object with integer string keys matching the requested levels.
-Each value must be a plain string with EXACTLY the target word count.
+Summarize this code element at increasing word-count levels using iterative expansion.
+Build each level by starting with the COMPLETE text of the previous shorter level, then append additional words.
+Never alter the text already written for a shorter level — only append.
+
+Return ONLY a JSON object: keys are word-count strings, values are the summaries.
+Word counts must be exact.
 
 Element type: {element_type}
 Element name: {name}
@@ -419,12 +422,31 @@ Code:
 {code}
 ```
 
-Return JSON with these exact word counts: {levels}
-Example: {{"4": "four word summary here", "8": "eight word description that explains it clearly now", \
-"16": "..."}}
+Required word counts in ascending order: {levels}
+
+Example for levels [4, 8, 16]:
+{{
+  "4":  "loads json config",
+  "8":  "loads json config file from pyramid directory",
+  "16": "loads json config file from pyramid directory structure returning empty dict when path missing"
+}}
+
+The "8" value starts with the exact "4" text. The "16" value starts with the exact "8" text.
+Each entry is a strict prefix of all longer entries.
+"""
+
+_EXTEND_PROMPT = """\
+Extend the following {seed_level}-word summary to exactly {target} words by appending new words after it.
+Do NOT change the existing text — only add words after the last word.
+
+Existing {seed_level}-word summary:
+  {seed}
+
+Return ONLY a JSON object: {{"{target}": "<the {target}-word summary that starts with the existing text>"}}
 """
 
 _ANALYZE_LEVELS = (4, 8, 16)
+LEVEL_SEQUENCE = (4, 8, 16, 32, 64)
 
 
 class Summarizer:
@@ -462,29 +484,52 @@ class Summarizer:
             return "claude-cli"
         return "stub"
 
-    def summarize(self, element: Element, levels: tuple[int, ...] | list[int]) -> dict[str, str]:
-        """Call the detected provider and return {str(level): summary} for each level."""
+    def _call_provider(self, provider: str, prompt: str) -> str:
+        """Dispatch a prompt to the named provider and return raw text."""
+        if provider == "anthropic":
+            return self._call_anthropic(prompt)
+        if provider == "openai":
+            return self._call_openai(prompt)
+        return self._call_claude_cli(prompt)
+
+    def summarize(
+        self,
+        element: Element,
+        levels: tuple[int, ...] | list[int],
+        seed: str | None = None,
+        seed_level: int | None = None,
+    ) -> dict[str, str]:
+        """Return {str(level): summary} for each level.
+
+        When *seed* is provided (a shorter summary that already exists) and only
+        one level is requested, uses _EXTEND_PROMPT to append words rather than
+        regenerate from scratch.  This preserves the prefix invariant.
+        """
         provider = self._detect_provider()
 
         if provider == "stub":
             return {str(lvl): f"{element.element_type} {element.name}" for lvl in levels}
 
-        code = element.code[:8000] + ("\n... (truncated)" if len(element.code) > 8000 else "")
-        prompt = _SUMMARY_PROMPT.format(
-            element_type=element.element_type,
-            name=element.name,
-            path=element.path,
-            code=code,
-            levels=list(levels),
-        )
+        sorted_levels = sorted(levels)
+
+        if seed and len(sorted_levels) == 1:
+            prompt = _EXTEND_PROMPT.format(
+                seed_level=seed_level,
+                target=sorted_levels[0],
+                seed=seed,
+            )
+        else:
+            code = element.code[:8000] + ("\n... (truncated)" if len(element.code) > 8000 else "")
+            prompt = _SUMMARY_PROMPT.format(
+                element_type=element.element_type,
+                name=element.name,
+                path=element.path,
+                code=code,
+                levels=sorted_levels,
+            )
 
         try:
-            if provider == "anthropic":
-                raw = self._call_anthropic(prompt)
-            elif provider == "openai":
-                raw = self._call_openai(prompt)
-            else:
-                raw = self._call_claude_cli(prompt)
+            raw = self._call_provider(provider, prompt)
             return self._parse_summaries(raw, levels)
         except (json.JSONDecodeError, KeyError, ValueError, RuntimeError, OSError):
             logger.exception("Failed to get summaries for %s", element.path)
@@ -826,28 +871,61 @@ def get(
                 raise click.ClickException(
                     f"Data file missing for '{path_str}'. Re-run analyze."
                 )
-            data_levels = data.get("levels") or {}
-            summary = str(data_levels.get(level, ""))  # type: ignore[union-attr]
+            data_levels: dict[str, str] = dict(data.get("levels") or {})  # type: ignore[arg-type]
+            summary = data_levels.get(level, "")
+
             if not summary:
+                # Fill every missing level in sequence from the lowest gap up to
+                # the requested level, so the prefix chain is never broken.
+                # Example: target=32, stored={4,8,16} → generate only 32
+                # Example: target=32, stored={4}      → generate 8, 16, 32 in order
+                target = int(level)
+                target_idx = LEVEL_SEQUENCE.index(target)
+                to_generate = [
+                    lv for lv in LEVEL_SEQUENCE[: target_idx + 1]
+                    if str(lv) not in data_levels
+                ]
+
                 config = storage.load_config()
                 effective_api = api or str(config.get("api", "anthropic"))
                 summarizer = Summarizer(api=effective_api, model=model)
-                click.echo(f"Generating level-{level} summary…", err=True)
-                result = summarizer.summarize(
-                    Element(
-                        path=path_str,
-                        element_type=etype,
-                        name=name,
-                        code=str(data.get("code", "")),
-                        start_line=int(data.get("start_line", 1)),  # type: ignore[arg-type]
-                        end_line=int(data.get("end_line", 1)),  # type: ignore[arg-type]
-                    ),
-                    (int(level),),
+                element = Element(
+                    path=path_str,
+                    element_type=etype,
+                    name=name,
+                    code=str(data.get("code", "")),
+                    start_line=int(data.get("start_line", 1)),  # type: ignore[arg-type]
+                    end_line=int(data.get("end_line", 1)),  # type: ignore[arg-type]
                 )
-                summary = result.get(level, "")
-                data_levels_mutable = dict(data_levels)  # type: ignore[arg-type]
-                data_levels_mutable[level] = summary
-                storage.save_data(sha, {**data, "levels": data_levels_mutable})  # type: ignore[arg-type]
+
+                # Seed = highest stored level below the first gap
+                first_missing = to_generate[0]
+                available_below = [
+                    lv for lv in LEVEL_SEQUENCE
+                    if lv < first_missing and str(lv) in data_levels
+                ]
+                cur_seed_level: int | None = max(available_below) if available_below else None
+                cur_seed: str | None = (
+                    data_levels[str(cur_seed_level)] if cur_seed_level else None
+                )
+
+                click.echo(
+                    f"Generating level(s) {to_generate} for '{label}'…", err=True
+                )
+                for gen_level in to_generate:
+                    result = summarizer.summarize(
+                        element,
+                        (gen_level,),
+                        seed=cur_seed,
+                        seed_level=cur_seed_level,
+                    )
+                    generated = result.get(str(gen_level), f"{etype} {name}")
+                    data_levels[str(gen_level)] = generated
+                    cur_seed_level = gen_level
+                    cur_seed = generated
+
+                storage.save_data(sha, {**data, "levels": data_levels})  # type: ignore[arg-type]
+                summary = data_levels.get(level, "")
 
         click.echo(f"{label}  (level {level})")
         click.echo(f"  {summary}")
