@@ -616,17 +616,40 @@ def _require_init(storage: StorageManager) -> None:
         )
 
 
-# Candidate files where a project documents its AI agent conventions.
-_AGENT_DOC_CANDIDATES = ("CLAUDE.md", "AGENTS.md", ".claude/CLAUDE.md")
+# Ordered choices shown to the user when no guidance is found.
+_AGENT_DOC_OPTIONS: list[tuple[str, str]] = [
+    ("1", "CLAUDE.md"),
+    ("2", "AGENTS.md"),
+    ("3", ".claude/CLAUDE.md"),
+]
+# All candidate paths (same set, used for the existence check).
+_AGENT_DOC_CANDIDATES = tuple(rel for _, rel in _AGENT_DOC_OPTIONS)
+
+# Template written into the chosen file.  {script} and {skill} are filled with
+# paths relative to the project root at runtime.
+_AGENT_GUIDANCE_TEMPLATE = """
+## Codebase Navigation
+
+This project is indexed with pyramid-navigator for progressive code exploration.
+
+### CLI quick-reference
+
+```bash
+uv run {script} list --level 4               # browse all elements at a glance
+uv run {script} query "TOPIC" --level 8      # search by concept
+uv run {script} get path/to/file.py --level 16  # inspect a specific element
+```
+
+Follow the Progressive Refinement Protocol — start at level 4–8, go deeper only when
+necessary.  Full skill documentation and decision rules: {skill}
+"""
 
 
 def _check_agent_guidance(root: Path) -> bool:
     """Return True if any agent-convention file in *root* mentions pyramid.
 
-    Searches CLAUDE.md, AGENTS.md, and .claude/CLAUDE.md for the word
-    'pyramid' (case-insensitive).  A loose keyword match is intentional —
-    the goal is to detect that the author has thought about it, not to
-    validate the content.
+    A loose keyword match is intentional — the goal is to detect that the
+    author has thought about it, not to validate the content.
     """
     for candidate in _AGENT_DOC_CANDIDATES:
         path = root / candidate
@@ -637,6 +660,49 @@ def _check_agent_guidance(root: Path) -> bool:
             except OSError:
                 pass
     return False
+
+
+def _agent_guidance_snippet(root: Path) -> str:
+    """Return the guidance markdown with paths relative to *root*."""
+    here = Path(__file__).resolve()
+    skill_md = here.parent.parent / "SKILL.md"  # skills/pyramid-navigator/SKILL.md
+    try:
+        script_rel = here.relative_to(root.resolve())
+    except ValueError:
+        script_rel = here
+    try:
+        skill_rel = skill_md.relative_to(root.resolve())
+    except ValueError:
+        skill_rel = skill_md
+    return _AGENT_GUIDANCE_TEMPLATE.format(script=script_rel, skill=skill_rel)
+
+
+def _write_agent_guidance(target: Path, snippet: str) -> None:
+    """Append *snippet* to *target*, creating parent dirs and the file if needed."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(snippet)
+
+
+def _prompt_agent_guidance(root: Path) -> None:
+    """Offer to write pyramid guidance into an agent doc file (interactive only)."""
+    click.echo("\nNo pyramid guidance found in CLAUDE.md or AGENTS.md.", err=True)
+    click.echo("Add it now? Choose a destination file:", err=True)
+    for num, rel in _AGENT_DOC_OPTIONS:
+        exists_note = " (exists — will append)" if (root / rel).exists() else " (will create)"
+        click.echo(f"  {num}. {rel}{exists_note}", err=True)
+    click.echo("  s. skip", err=True)
+
+    choice = click.prompt("Choice", default="1", show_default=True, err=True)
+    option_map = {num: rel for num, rel in _AGENT_DOC_OPTIONS}
+    chosen = option_map.get(choice)
+    if not chosen:
+        click.echo("Skipped. Add guidance manually before running agents.", err=True)
+        return
+
+    target = root / chosen
+    _write_agent_guidance(target, _agent_guidance_snippet(root))
+    click.echo(f"Added pyramid guidance to {target}", err=True)
 
 
 # ─────────────────────────────────────────────
@@ -670,18 +736,17 @@ def init(db_path: str | None, api: str) -> None:
     storage.init(api=api)
     click.echo(f"Initialized pyramid generator at {storage.pyramid_dir}")
 
-    # Warn if no CLAUDE.md / AGENTS.md documents how to use this skill.
+    # Prompt to document the skill if no guidance exists yet.
     if not _check_agent_guidance(Path.cwd()):
-        click.echo(
-            "\nWarning: no pyramid guidance found in CLAUDE.md or AGENTS.md.\n"
-            "AI agents won't know to use this skill unless you document it.\n"
-            "Add a section like:\n\n"
-            "  ## Codebase Navigation\n"
-            "  This project is indexed with pyramid-navigator.\n"
-            "  Use `uv run skills/pyramid-navigator/scripts/pyramid_cli.py` to explore it.\n"
-            "  Follow the Progressive Refinement Protocol in SKILL.md before reading source.\n",
-            err=True,
-        )
+        if sys.stdin.isatty():
+            _prompt_agent_guidance(Path.cwd())
+        else:
+            click.echo(
+                "\nWarning: no pyramid guidance found in CLAUDE.md or AGENTS.md.\n"
+                "AI agents won't know to use this skill unless you document it.\n"
+                "Run `init` interactively to add it automatically, or add it manually.",
+                err=True,
+            )
 
     click.echo("\nNext: uv run pyramid_cli.py analyze .")
 
