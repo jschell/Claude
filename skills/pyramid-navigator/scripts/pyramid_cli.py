@@ -1,54 +1,102 @@
 #!/usr/bin/env python3
-"""pyramid_cli.py - Pyramid Summary Generator CLI
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "click>=8.0",
+#   "anthropic>=0.40",
+# ]
+# [tool.uv]
+# exclude-newer = "2026-02-12"
+# ///
+# Optional extras (install separately if needed):
+#   uv add tree-sitter-languages   # multi-language parsing (recommended)
+#   uv add openai                  # OpenAI provider alternative
+"""pyramid_cli.py — Pyramid Summary Generator CLI.
 
 Indexes a codebase with multi-level LLM summaries for progressive navigation.
 
 Usage:
-  python pyramid_cli.py init                     # Initialize in current directory
-  python pyramid_cli.py analyze [PATH]           # Index codebase
-  python pyramid_cli.py query QUERY [--level N]  # Search summaries
-  python pyramid_cli.py get ELEMENT_PATH         # Get specific element
-  python pyramid_cli.py list [--level N]         # List all elements
+    uv run pyramid_cli.py init
+    uv run pyramid_cli.py analyze [PATH]
+    uv run pyramid_cli.py query QUERY [--level N]
+    uv run pyramid_cli.py get ELEMENT_PATH [--level N] [--show-code]
+    uv run pyramid_cli.py list [--level N] [--type file|function|class]
 
-Storage (.pyramid/):
-  config.json       - Project configuration
-  index.json        - Fast search index (levels 4, 8, 16 only)
-  data/<sha>.json   - Full element data (all levels + code)
+Storage layout (.pyramid/):
+    config.json         Project configuration
+    index.json          Fast search index (levels 4, 8, 16 only)
+    data/<sha256>.json  Full element data (all levels + source code)
 
-Environment:
-  ANTHROPIC_API_KEY  - Required for Anthropic (default)
-  OPENAI_API_KEY     - Required for OpenAI (use --api openai)
-  PYRAMID_DB         - Override .pyramid/ directory location
+Environment variables:
+    ANTHROPIC_API_KEY   Anthropic provider (default)
+    OPENAI_API_KEY      OpenAI provider (use --api openai)
+    PYRAMID_DB          Override .pyramid/ directory location
 """
 
-import sys
-import json
+from __future__ import annotations
+
 import hashlib
-import re
+import json
+import logging
 import os
-from pathlib import Path
-from datetime import datetime, timezone
+import re
+import shutil
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
 import click
+
+logger = logging.getLogger(__name__)
+
+# ── Optional dependencies (fail gracefully if absent) ──────────────────────
+
+try:
+    import anthropic as _anthropic
+
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _anthropic = None  # type: ignore[assignment]
+    _ANTHROPIC_AVAILABLE = False
+
+try:
+    import openai as _openai
+
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    _openai = None  # type: ignore[assignment]
+    _OPENAI_AVAILABLE = False
+
+try:
+    import tree_sitter_languages as _ts_languages
+
+    _TREE_SITTER_AVAILABLE = True
+except ImportError:
+    _ts_languages = None  # type: ignore[assignment]
+    _TREE_SITTER_AVAILABLE = False
+
 
 # ─────────────────────────────────────────────
 # SECTION: Data structures
 # ─────────────────────────────────────────────
 
+
 @dataclass
 class Element:
-    """A parsed code element (file, class, or function)."""
-    path: str          # Relative path from project root
-    element_type: str  # "file", "class", "function"
-    name: str          # Element name (filename for files)
-    code: str          # Raw source code
+    """A parsed code element: a file, class, or function."""
+
+    path: str
+    element_type: str  # "file" | "class" | "function"
+    name: str
+    code: str
     start_line: int
     end_line: int
 
     def content_hash(self) -> str:
+        """SHA-256 of the element's source code."""
         return hashlib.sha256(self.code.encode()).hexdigest()
 
 
@@ -56,74 +104,82 @@ class Element:
 # SECTION: Storage
 # ─────────────────────────────────────────────
 
+_INDEX_LEVELS = (4, 8, 16)  # Levels stored in index.json (hot path)
+
+
 class StorageManager:
-    """Read/write .pyramid/ directory."""
+    """Read and write the .pyramid/ directory."""
 
     VERSION = 1
 
-    def __init__(self, pyramid_dir: Path):
+    def __init__(self, pyramid_dir: Path) -> None:
         self.pyramid_dir = pyramid_dir
         self.data_dir = pyramid_dir / "data"
         self.index_path = pyramid_dir / "index.json"
         self.config_path = pyramid_dir / "config.json"
 
     def init(self, api: str = "anthropic") -> None:
-        """Create .pyramid/ structure."""
+        """Create .pyramid/ directory structure."""
         self.pyramid_dir.mkdir(exist_ok=True)
         self.data_dir.mkdir(exist_ok=True)
 
         if not self.config_path.exists():
-            self._write_json(self.config_path, {
+            _write_json(self.config_path, {
                 "version": self.VERSION,
                 "created": datetime.now(timezone.utc).isoformat(),
                 "api": api,
             })
 
         if not self.index_path.exists():
-            self._write_json(self.index_path, {})
+            _write_json(self.index_path, {})
 
     def is_initialized(self) -> bool:
+        """Return True if .pyramid/ has been initialized."""
         return self.pyramid_dir.exists() and self.index_path.exists()
 
-    def load_config(self) -> dict:
+    def load_config(self) -> dict[str, object]:
+        """Load config.json, returning empty dict if missing."""
         if not self.config_path.exists():
             return {}
-        return self._read_json(self.config_path)
+        return _read_json(self.config_path)
 
-    def load_index(self) -> dict:
+    def load_index(self) -> dict[str, dict[str, object]]:
+        """Load index.json, returning empty dict if missing."""
         if not self.index_path.exists():
             return {}
-        return self._read_json(self.index_path)
+        return _read_json(self.index_path)
 
-    def save_index(self, index: dict) -> None:
-        self._write_json(self.index_path, index)
+    def save_index(self, index: dict[str, dict[str, object]]) -> None:
+        """Persist index.json."""
+        _write_json(self.index_path, index)
 
-    def load_data(self, sha: str) -> Optional[dict]:
+    def load_data(self, sha: str) -> dict[str, object] | None:
+        """Load data/<sha>.json, returning None if missing."""
         path = self.data_dir / f"{sha}.json"
         if not path.exists():
             return None
-        return self._read_json(path)
+        return _read_json(path)
 
-    def save_data(self, sha: str, data: dict) -> None:
-        path = self.data_dir / f"{sha}.json"
-        self._write_json(path, data)
+    def save_data(self, sha: str, data: dict[str, object]) -> None:
+        """Persist data/<sha>.json."""
+        _write_json(self.data_dir / f"{sha}.json", data)
 
-    @staticmethod
-    def _read_json(path: Path) -> dict:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
 
-    @staticmethod
-    def _write_json(path: Path, data: dict) -> None:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+def _read_json(path: Path) -> dict[str, object]:
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)  # type: ignore[no-any-return]
+
+
+def _write_json(path: Path, data: dict[str, object]) -> None:
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 # ─────────────────────────────────────────────
 # SECTION: Parser
 # ─────────────────────────────────────────────
 
-SUPPORTED_EXTENSIONS = {
+SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
     ".ts": "typescript",
@@ -136,267 +192,209 @@ SUPPORTED_EXTENSIONS = {
     ".php": "php",
 }
 
-IGNORE_DIRS = {
+_IGNORE_DIRS = frozenset({
     ".git", ".pyramid", "__pycache__", "node_modules", ".venv", "venv",
     "env", ".env", "dist", "build", "target", ".tox", ".pytest_cache",
     ".mypy_cache", "coverage", ".coverage", "htmlcov",
+})
+
+_IGNORE_SUFFIXES = frozenset({".min.js", ".min.css", ".lock"})
+_IGNORE_NAMES = frozenset({"package-lock.json", "yarn.lock", "Pipfile.lock", "poetry.lock"})
+
+# tree-sitter node types per language
+_FUNC_TYPES: dict[str, list[str]] = {
+    "python": ["function_definition", "async_function_definition"],
+    "javascript": ["function_declaration", "arrow_function", "method_definition"],
+    "typescript": ["function_declaration", "arrow_function", "method_definition"],
+    "go": ["function_declaration", "method_declaration"],
+    "rust": ["function_item"],
+    "java": ["method_declaration", "constructor_declaration"],
+    "c": ["function_definition"],
+    "cpp": ["function_definition"],
+    "ruby": ["method"],
+    "php": ["function_definition", "method_declaration"],
+}
+_CLASS_TYPES: dict[str, list[str]] = {
+    "python": ["class_definition"],
+    "javascript": ["class_declaration"],
+    "typescript": ["class_declaration"],
+    "java": ["class_declaration"],
+    "ruby": ["class"],
+    "php": ["class_declaration"],
+    "rust": ["impl_item", "struct_item"],
+    "go": ["type_declaration"],
+    "c": ["struct_specifier"],
+    "cpp": ["class_specifier", "struct_specifier"],
 }
 
-IGNORE_FILES = {
-    "*.min.js", "*.min.css", "*.lock", "package-lock.json", "yarn.lock",
-    "Pipfile.lock", "poetry.lock",
-}
 
-
-def _should_ignore_file(path: Path) -> bool:
-    name = path.name
-    for pattern in IGNORE_FILES:
-        if pattern.startswith("*"):
-            if name.endswith(pattern[1:]):
-                return True
-        elif name == pattern:
-            return True
-    return False
+def _should_ignore(path: Path) -> bool:
+    return (
+        path.name in _IGNORE_NAMES
+        or path.suffix.lower() in _IGNORE_SUFFIXES
+        or any(part in _IGNORE_DIRS for part in path.parts)
+    )
 
 
 class CodeParser:
-    """Extract code elements from source files."""
-
-    def __init__(self):
-        self._ts_available = self._check_tree_sitter()
-
-    @staticmethod
-    def _check_tree_sitter() -> bool:
-        try:
-            import tree_sitter_languages  # noqa: F401
-            return True
-        except ImportError:
-            return False
+    """Extract code elements (file/class/function) from source files."""
 
     def parse_file(self, path: Path, root: Path) -> list[Element]:
-        """Parse a file and return its elements. Always includes file-level element."""
+        """Return all elements found in *path*. Always includes a file-level element."""
         relative = str(path.relative_to(root))
-        suffix = path.suffix.lower()
-
         try:
             code = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
+            logger.exception("Failed to read %s", path)
             return []
 
-        lines = code.splitlines()
-        elements = [Element(
+        file_element = Element(
             path=relative,
             element_type="file",
             name=path.name,
             code=code,
             start_line=1,
-            end_line=len(lines),
-        )]
+            end_line=len(code.splitlines()),
+        )
 
+        suffix = path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
-            return elements
+            return [file_element]
 
         lang = SUPPORTED_EXTENSIONS[suffix]
+        sub_elements = (
+            self._parse_tree_sitter(code, relative, lang)
+            if _TREE_SITTER_AVAILABLE
+            else self._parse_heuristic(code, relative, suffix)
+        )
+        return [file_element, *sub_elements]
 
-        if self._ts_available:
-            sub_elements = self._parse_tree_sitter(code, relative, lang)
-        else:
-            sub_elements = self._parse_heuristic(code, relative, suffix)
+    @staticmethod
+    def _parse_tree_sitter(code: str, relative: str, lang: str) -> list[Element]:
+        """Use tree-sitter to extract function and class elements."""
+        if _ts_languages is None:
+            return []
 
-        elements.extend(sub_elements)
-        return elements
-
-    def _parse_tree_sitter(self, code: str, relative: str, lang: str) -> list[Element]:
         try:
-            from tree_sitter_languages import get_language, get_parser
-            language = get_language(lang)
-            parser = get_parser(lang)
+            parser = _ts_languages.get_parser(lang)
         except Exception:
+            logger.exception("tree-sitter parser unavailable for %s", lang)
             return []
 
         tree = parser.parse(code.encode())
-        elements = []
         lines = code.splitlines()
+        elements: list[Element] = []
+        lang_func_types = set(_FUNC_TYPES.get(lang, []))
+        lang_class_types = set(_CLASS_TYPES.get(lang, []))
 
-        # Node types per language for functions and classes
-        func_types = {
-            "python": ["function_definition", "async_function_definition"],
-            "javascript": ["function_declaration", "arrow_function", "method_definition"],
-            "typescript": ["function_declaration", "arrow_function", "method_definition"],
-            "go": ["function_declaration", "method_declaration"],
-            "rust": ["function_item"],
-            "java": ["method_declaration", "constructor_declaration"],
-            "c": ["function_definition"],
-            "cpp": ["function_definition"],
-            "ruby": ["method"],
-            "php": ["function_definition", "method_declaration"],
-        }
+        def _extract_name(node: object) -> str:
+            for child in node.children:  # type: ignore[attr-defined]
+                if child.type in (  # type: ignore[attr-defined]
+                    "identifier", "name", "field_identifier", "property_identifier"
+                ):
+                    text = child.text  # type: ignore[attr-defined]
+                    return text.decode() if text else ""
+            return node.type  # type: ignore[attr-defined]
 
-        class_types = {
-            "python": ["class_definition"],
-            "javascript": ["class_declaration"],
-            "typescript": ["class_declaration"],
-            "java": ["class_declaration"],
-            "ruby": ["class"],
-            "php": ["class_declaration"],
-            "rust": ["impl_item", "struct_item"],
-            "go": ["type_declaration"],
-            "c": ["struct_specifier"],
-            "cpp": ["class_specifier", "struct_specifier"],
-        }
-
-        lang_func_types = set(func_types.get(lang, []))
-        lang_class_types = set(class_types.get(lang, []))
-
-        def extract_name(node) -> str:
-            # Look for identifier or name child node
-            for child in node.children:
-                if child.type in ("identifier", "name", "field_identifier", "property_identifier"):
-                    return child.text.decode() if child.text else ""
-            return node.type
-
-        def walk(node):
-            if node.type in lang_func_types:
-                name = extract_name(node)
-                start = node.start_point[0]
-                end = node.end_point[0]
-                snippet = "\n".join(lines[start:end + 1])
+        def _walk(node: object) -> None:
+            node_type = node.type  # type: ignore[attr-defined]
+            if node_type in lang_func_types or node_type in lang_class_types:
+                etype = "function" if node_type in lang_func_types else "class"
+                name = _extract_name(node)
+                start = node.start_point[0]  # type: ignore[attr-defined]
+                end = node.end_point[0]  # type: ignore[attr-defined]
                 elements.append(Element(
                     path=relative,
-                    element_type="function",
+                    element_type=etype,
                     name=name,
-                    code=snippet,
+                    code="\n".join(lines[start : end + 1]),
                     start_line=start + 1,
                     end_line=end + 1,
                 ))
-            elif node.type in lang_class_types:
-                name = extract_name(node)
-                start = node.start_point[0]
-                end = node.end_point[0]
-                snippet = "\n".join(lines[start:end + 1])
-                elements.append(Element(
-                    path=relative,
-                    element_type="class",
-                    name=name,
-                    code=snippet,
-                    start_line=start + 1,
-                    end_line=end + 1,
-                ))
-            for child in node.children:
-                walk(child)
+            for child in node.children:  # type: ignore[attr-defined]
+                _walk(child)
 
-        walk(tree.root_node)
+        _walk(tree.root_node)
         return elements
 
-    def _parse_heuristic(self, code: str, relative: str, suffix: str) -> list[Element]:
-        """Fallback line-based parser for unsupported languages."""
-        elements = []
+    @staticmethod
+    def _parse_heuristic(code: str, relative: str, suffix: str) -> list[Element]:
+        """Line-based fallback parser for when tree-sitter is unavailable."""
+        patterns: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {
+            ".py": (
+                re.compile(r"^(?:async\s+)?def\s+(\w+)\s*\("),
+                re.compile(r"^class\s+(\w+)"),
+            ),
+            ".go": (
+                re.compile(r"^func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\("),
+                re.compile(r"^type\s+(\w+)\s+struct"),
+            ),
+            ".rs": (
+                re.compile(r"^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]"),
+                re.compile(r"^(?:pub\s+)?(?:struct|impl|enum)\s+(\w+)"),
+            ),
+        }
+        default_func = re.compile(r"^(?:def|func|function|fn|sub)\s+(\w+)")
+        default_class = re.compile(r"^(?:class|struct|interface|type)\s+(\w+)")
+        func_pat, class_pat = patterns.get(suffix, (default_func, default_class))
+
         lines = code.splitlines()
+        elements: list[Element] = []
 
-        # Patterns per file type
-        if suffix == ".py":
-            func_pat = re.compile(r"^(async\s+)?def\s+(\w+)\s*\(")
-            class_pat = re.compile(r"^class\s+(\w+)")
-        elif suffix in (".js", ".ts"):
-            func_pat = re.compile(r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(|^\s*(\w+)\s*[:=]\s*(?:async\s+)?(?:function|\()")
-            class_pat = re.compile(r"^(?:export\s+)?class\s+(\w+)")
-        elif suffix == ".go":
-            func_pat = re.compile(r"^func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(")
-            class_pat = re.compile(r"^type\s+(\w+)\s+struct")
-        elif suffix == ".rs":
-            func_pat = re.compile(r"^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]")
-            class_pat = re.compile(r"^(?:pub\s+)?(?:struct|impl|enum)\s+(\w+)")
-        else:
-            # Generic: look for common patterns
-            func_pat = re.compile(r"^(?:def|func|function|fn|sub|procedure)\s+(\w+)")
-            class_pat = re.compile(r"^(?:class|struct|interface|type)\s+(\w+)")
-
-        def find_block_end(start_idx: int) -> int:
-            """Find end of block by indentation or brace counting."""
-            if start_idx >= len(lines):
-                return start_idx
-            base_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip())
-            brace_count = lines[start_idx].count("{") - lines[start_idx].count("}")
-            for i in range(start_idx + 1, min(start_idx + 200, len(lines))):
-                line = lines[i]
-                stripped = line.strip()
+        def _block_end(start: int) -> int:
+            base_indent = len(lines[start]) - len(lines[start].lstrip())
+            braces = lines[start].count("{") - lines[start].count("}")
+            for i in range(start + 1, min(start + 200, len(lines))):
+                stripped = lines[i].strip()
                 if not stripped:
                     continue
-                # Brace-based (C-style)
-                if "{" in line or "}" in line:
-                    brace_count += line.count("{") - line.count("}")
-                    if brace_count <= 0:
+                if "{" in lines[i] or "}" in lines[i]:
+                    braces += lines[i].count("{") - lines[i].count("}")
+                    if braces <= 0:
                         return i
                 else:
-                    # Indent-based (Python)
-                    indent = len(line) - len(line.lstrip())
-                    if indent <= base_indent and stripped:
+                    indent = len(lines[i]) - len(lines[i].lstrip())
+                    if indent <= base_indent:
                         return i - 1
-            return min(start_idx + 50, len(lines) - 1)
+            return min(start + 50, len(lines) - 1)
 
         for i, line in enumerate(lines):
-            m = func_pat.match(line)
-            if m:
-                name = next((g for g in m.groups() if g and not g.strip() in ("async", "export", "pub")), "unknown")
-                name = name.strip()
-                end = find_block_end(i)
-                snippet = "\n".join(lines[i:end + 1])
-                elements.append(Element(
-                    path=relative, element_type="function", name=name,
-                    code=snippet, start_line=i + 1, end_line=end + 1,
-                ))
+            m = func_pat.match(line) or class_pat.match(line)
+            if not m:
                 continue
-
-            m = class_pat.match(line)
-            if m:
-                name = m.group(1)
-                end = find_block_end(i)
-                snippet = "\n".join(lines[i:end + 1])
-                elements.append(Element(
-                    path=relative, element_type="class", name=name,
-                    code=snippet, start_line=i + 1, end_line=end + 1,
-                ))
+            etype = "function" if func_pat.match(line) else "class"
+            name = m.group(1)
+            end = _block_end(i)
+            elements.append(Element(
+                path=relative,
+                element_type=etype,
+                name=name,
+                code="\n".join(lines[i : end + 1]),
+                start_line=i + 1,
+                end_line=end + 1,
+            ))
 
         return elements
 
-    def walk_directory(self, root: Path, ignore_file: Optional[Path] = None) -> list[Path]:
-        """Return all parseable source files under root."""
-        ignored_patterns = set()
-        if ignore_file and ignore_file.exists():
-            for line in ignore_file.read_text().splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    ignored_patterns.add(line)
+    def walk_directory(self, root: Path, ignore_file: Path | None = None) -> list[Path]:
+        """Return sorted list of parseable source files under *root*."""
+        extra_patterns: list[str] = []
+        for candidate in (ignore_file, root / ".gitignore"):
+            if candidate and candidate.exists():
+                for line in candidate.read_text().splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        extra_patterns.append(line.lstrip("/"))
 
-        # Also read .gitignore patterns (simple subset)
-        gitignore = root / ".gitignore"
-        if gitignore.exists():
-            for line in gitignore.read_text().splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    ignored_patterns.add(line)
-
-        results = []
+        results: list[Path] = []
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
-            # Skip ignored directories
-            if any(part in IGNORE_DIRS for part in path.parts):
+            if _should_ignore(path):
                 continue
-            # Skip ignored files
-            if _should_ignore_file(path):
-                continue
-            # Check .pyramidignore / .gitignore patterns (simple glob)
             rel = str(path.relative_to(root))
-            skip = False
-            for pat in ignored_patterns:
-                pat_clean = pat.lstrip("/")
-                if pat_clean in rel or rel.endswith(pat_clean):
-                    skip = True
-                    break
-            if skip:
+            if any(pat in rel or rel.endswith(pat) for pat in extra_patterns):
                 continue
-            # Only parse supported extensions
             if path.suffix.lower() in SUPPORTED_EXTENSIONS:
                 results.append(path)
 
@@ -407,10 +405,10 @@ class CodeParser:
 # SECTION: Summarizer
 # ─────────────────────────────────────────────
 
-SUMMARY_PROMPT = """\
+_SUMMARY_PROMPT = """\
 Summarize the following code element at multiple word-count levels.
-Return ONLY a JSON object with integer keys matching the requested levels.
-Each value must be a plain string with EXACTLY the target word count (count carefully).
+Return ONLY a JSON object with integer string keys matching the requested levels.
+Each value must be a plain string with EXACTLY the target word count.
 
 Element type: {element_type}
 Element name: {name}
@@ -422,120 +420,141 @@ Code:
 ```
 
 Return JSON with these exact word counts: {levels}
-Example format: {{"4": "brief four word summary", "8": "slightly longer eight word description here now", "16": "..."}}
+Example: {{"4": "four word summary here", "8": "eight word description that explains it clearly now", \
+"16": "..."}}
 """
+
+_ANALYZE_LEVELS = (4, 8, 16)
 
 
 class Summarizer:
     """Generate LLM summaries at multiple word-count levels."""
 
-    ANALYZE_LEVELS = [4, 8, 16]
-    GET_LEVELS = [32, 64]
-
-    def __init__(self, api: str = "anthropic", model: Optional[str] = None):
+    def __init__(
+        self,
+        api: str = "anthropic",
+        model: str | None = None,
+        no_llm: bool = False,
+    ) -> None:
         self.api = api
         self.model = model or self._default_model(api)
-        self._client = None
+        self.no_llm = no_llm
 
     @staticmethod
     def _default_model(api: str) -> str:
-        if api == "openai":
-            return "gpt-4o-mini"
-        return "claude-haiku-4-5-20251001"
+        return "gpt-4o-mini" if api == "openai" else "claude-haiku-4-5-20251001"
 
-    def _get_client(self):
-        if self._client is not None:
-            return self._client
+    def _detect_provider(self) -> str:
+        """Return the best available provider: anthropic | openai | claude-cli | stub."""
+        if self.no_llm:
+            return "stub"
+        if self.api == "anthropic" and os.environ.get("ANTHROPIC_API_KEY") and _ANTHROPIC_AVAILABLE:
+            return "anthropic"
+        if self.api == "openai" and os.environ.get("OPENAI_API_KEY") and _OPENAI_AVAILABLE:
+            return "openai"
+        # Cross-fallback: any key available
+        if os.environ.get("ANTHROPIC_API_KEY") and _ANTHROPIC_AVAILABLE:
+            return "anthropic"
+        if os.environ.get("OPENAI_API_KEY") and _OPENAI_AVAILABLE:
+            return "openai"
+        # Last resort: use the claude CLI if in PATH (works inside Claude Code sessions)
+        if shutil.which("claude"):
+            return "claude-cli"
+        return "stub"
 
-        if self.api == "openai":
-            try:
-                import openai
-            except ImportError:
-                raise SystemExit("openai package required: pip install openai")
-            key = os.environ.get("OPENAI_API_KEY")
-            if not key:
-                raise SystemExit("OPENAI_API_KEY not set")
-            self._client = openai.OpenAI(api_key=key)
-        else:
-            try:
-                import anthropic
-            except ImportError:
-                raise SystemExit("anthropic package required: pip install anthropic")
-            key = os.environ.get("ANTHROPIC_API_KEY")
-            if not key:
-                # Try OpenAI as fallback
-                oai_key = os.environ.get("OPENAI_API_KEY")
-                if oai_key:
-                    click.echo("ANTHROPIC_API_KEY not set, falling back to OpenAI", err=True)
-                    self.api = "openai"
-                    self.model = self._default_model("openai")
-                    return self._get_client()
-                raise SystemExit("ANTHROPIC_API_KEY not set (or OPENAI_API_KEY for fallback)")
-            self._client = anthropic.Anthropic(api_key=key)
+    def summarize(self, element: Element, levels: tuple[int, ...] | list[int]) -> dict[str, str]:
+        """Call the detected provider and return {str(level): summary} for each level."""
+        provider = self._detect_provider()
 
-        return self._client
+        if provider == "stub":
+            return {str(lvl): f"{element.element_type} {element.name}" for lvl in levels}
 
-    def summarize(self, element: Element, levels: list[int]) -> dict[str, str]:
-        """Call LLM once to get summaries at all requested levels."""
-        # Truncate very long code to avoid token limits
-        code = element.code
-        if len(code) > 8000:
-            code = code[:8000] + "\n... (truncated)"
-
-        prompt = SUMMARY_PROMPT.format(
+        code = element.code[:8000] + ("\n... (truncated)" if len(element.code) > 8000 else "")
+        prompt = _SUMMARY_PROMPT.format(
             element_type=element.element_type,
             name=element.name,
             path=element.path,
             code=code,
-            levels=levels,
+            levels=list(levels),
         )
 
-        client = self._get_client()
-
         try:
-            if self.api == "openai":
-                response = client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
-                    max_tokens=512,
-                    temperature=0.1,
-                )
-                raw = response.choices[0].message.content
+            if provider == "anthropic":
+                raw = self._call_anthropic(prompt)
+            elif provider == "openai":
+                raw = self._call_openai(prompt)
             else:
-                response = client.messages.create(
-                    model=self.model,
-                    max_tokens=512,
-                    temperature=0.1,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                raw = response.content[0].text
+                raw = self._call_claude_cli(prompt)
+            return self._parse_summaries(raw, levels)
+        except (json.JSONDecodeError, KeyError, ValueError, RuntimeError, OSError):
+            logger.exception("Failed to get summaries for %s", element.path)
+            return {str(lvl): f"{element.element_type} {element.name}" for lvl in levels}
 
+    def _call_anthropic(self, prompt: str) -> str:
+        if _anthropic is None:
+            raise RuntimeError("anthropic package not installed: uv add anthropic")
+        client = _anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        response = client.messages.create(
+            model=self.model,
+            max_tokens=512,
+            temperature=0.1,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text  # type: ignore[union-attr]
+
+    def _call_openai(self, prompt: str) -> str:
+        if _openai is None:
+            raise RuntimeError("openai package not installed: uv add openai")
+        client = _openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=512,
+            temperature=0.1,
+        )
+        return response.choices[0].message.content or ""
+
+    @staticmethod
+    def _call_claude_cli(prompt: str) -> str:
+        """Invoke the claude CLI subprocess (works inside Claude Code sessions)."""
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "text"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}")
+        return result.stdout.strip()
+
+    @staticmethod
+    def _parse_summaries(
+        raw: str, levels: tuple[int, ...] | list[int]
+    ) -> dict[str, str]:
+        """Extract JSON {level: summary} from an LLM response string."""
+        try:
             data = json.loads(raw)
-            # Normalize keys to strings
             return {str(k): str(v) for k, v in data.items()}
-
         except json.JSONDecodeError:
-            # Fallback: extract any JSON object from response
-            match = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group())
-                    return {str(k): str(v) for k, v in data.items()}
-                except json.JSONDecodeError:
-                    pass
-            # Last resort: generate stub summaries
-            return {str(level): f"{element.element_type} {element.name}" for level in levels}
-        except Exception as e:
-            click.echo(f"  Warning: LLM error for {element.path}: {e}", err=True)
-            return {str(level): f"{element.element_type} {element.name}" for level in levels}
+            pass
+        # Try to extract a JSON object from surrounding text
+        m = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
+        if m:
+            try:
+                data = json.loads(m.group())
+                return {str(k): str(v) for k, v in data.items()}
+            except json.JSONDecodeError:
+                logger.exception("Failed to parse JSON from LLM response")
+        return {str(lvl): raw.strip() for lvl in levels}
 
 
 # ─────────────────────────────────────────────
-# SECTION: CLI
+# SECTION: CLI helpers
 # ─────────────────────────────────────────────
 
-def _find_pyramid_dir(db_path: Optional[str] = None) -> Path:
+
+def _pyramid_dir(db_path: str | None) -> Path:
     if db_path:
         return Path(db_path)
     env = os.environ.get("PYRAMID_DB")
@@ -544,95 +563,112 @@ def _find_pyramid_dir(db_path: Optional[str] = None) -> Path:
     return Path.cwd() / ".pyramid"
 
 
-def _require_initialized(storage: StorageManager) -> None:
+def _require_init(storage: StorageManager) -> None:
     if not storage.is_initialized():
         raise click.ClickException(
-            ".pyramid/ not found. Run: python pyramid_cli.py init"
+            ".pyramid/ not found. Run: uv run pyramid_cli.py init"
         )
 
 
+# ─────────────────────────────────────────────
+# SECTION: CLI commands
+# ─────────────────────────────────────────────
+
+
 @click.group()
-@click.version_option("0.1.0")
-def cli():
+@click.version_option("0.2.0")
+def cli() -> None:
     """Pyramid Summary Generator — progressive codebase navigation."""
-    pass
 
 
 # ── init ──────────────────────────────────────
 
+
 @cli.command()
-@click.option("--db-path", default=None, help="Override .pyramid/ location")
-@click.option("--api", default="anthropic", type=click.Choice(["anthropic", "openai"]),
-              help="LLM provider (default: anthropic)")
-def init(db_path, api):
-    """Initialize pyramid generator in current directory."""
-    pyramid_dir = _find_pyramid_dir(db_path)
-    storage = StorageManager(pyramid_dir)
-
+@click.option("--db-path", default=None, help="Override .pyramid/ location.")
+@click.option(
+    "--api",
+    default="anthropic",
+    type=click.Choice(["anthropic", "openai"]),
+    help="LLM provider (default: anthropic).",
+)
+def init(db_path: str | None, api: str) -> None:
+    """Initialize pyramid generator in the current directory."""
+    storage = StorageManager(_pyramid_dir(db_path))
     if storage.is_initialized():
-        click.echo(f"Already initialized at {pyramid_dir}")
+        click.echo(f"Already initialized at {storage.pyramid_dir}")
         return
-
     storage.init(api=api)
-    click.echo(f"✓ Initialized pyramid generator")
-    click.echo(f"  Database: {pyramid_dir}")
-    click.echo(f"  Config:   {pyramid_dir / 'config.json'}")
-    click.echo(f"\nNext: python pyramid_cli.py analyze .")
+    click.echo(f"Initialized pyramid generator at {storage.pyramid_dir}")
+    click.echo(f"\nNext: uv run pyramid_cli.py analyze .")
 
 
 # ── analyze ───────────────────────────────────
 
+
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-@click.option("--db-path", default=None, help="Override .pyramid/ location")
-@click.option("--api", default=None, type=click.Choice(["anthropic", "openai"]),
-              help="LLM provider override")
-@click.option("--model", default=None, help="Override LLM model name")
-@click.option("--force", is_flag=True, help="Re-analyze all files, ignoring cache")
-@click.option("--workers", default=4, show_default=True, help="Parallel LLM workers")
-def analyze(path, db_path, api, model, force, workers):
-    """Analyze codebase and generate pyramid summaries."""
+@click.option("--db-path", default=None, help="Override .pyramid/ location.")
+@click.option(
+    "--api",
+    default=None,
+    type=click.Choice(["anthropic", "openai"]),
+    help="LLM provider override.",
+)
+@click.option("--model", default=None, help="Override LLM model name.")
+@click.option("--force", is_flag=True, help="Re-analyze all files, ignoring cache.")
+@click.option("--workers", default=4, show_default=True, help="Parallel LLM workers.")
+@click.option("--no-llm", "no_llm", is_flag=True, help="Skip LLM; write placeholder summaries.")
+def analyze(
+    path: str,
+    db_path: str | None,
+    api: str | None,
+    model: str | None,
+    force: bool,
+    workers: int,
+    no_llm: bool,
+) -> None:
+    """Analyze a codebase and generate pyramid summaries."""
     root = Path(path).resolve()
-    pyramid_dir = _find_pyramid_dir(db_path)
-    storage = StorageManager(pyramid_dir)
-    _require_initialized(storage)
+    storage = StorageManager(_pyramid_dir(db_path))
+    _require_init(storage)
 
     config = storage.load_config()
-    effective_api = api or config.get("api", "anthropic")
-    summarizer = Summarizer(api=effective_api, model=model)
+    effective_api = api or str(config.get("api", "anthropic"))
+    summarizer = Summarizer(api=effective_api, model=model, no_llm=no_llm)
     parser = CodeParser()
 
-    click.echo(f"Analyzing codebase at: {root}")
-
-    # Collect files
-    ignore_file = root / ".pyramidignore"
-    files = parser.walk_directory(root, ignore_file)
-    click.echo(f"Found {len(files)} source files")
+    click.echo(f"Analyzing: {root}")
+    files = parser.walk_directory(root, root / ".pyramidignore")
+    click.echo(f"Source files found: {len(files)}")
 
     index = storage.load_index()
-    tasks = []  # (element, sha) pairs that need summarization
-
-    # Parse all files, identify what needs summarizing
-    all_elements: list[tuple[Element, str]] = []
+    pending: list[tuple[Element, str]] = []
     for file_path in files:
         for element in parser.parse_file(file_path, root):
             sha = element.content_hash()
             if not force and sha in index:
-                continue  # Already indexed and unchanged
-            all_elements.append((element, sha))
+                continue
+            pending.append((element, sha))
 
-    if not all_elements:
-        click.echo("✓ All files up to date")
+    if not pending:
+        click.echo("All files up to date.")
         return
 
-    click.echo(f"Summarizing {len(all_elements)} elements...")
+    click.echo(f"Elements to summarize: {len(pending)}")
 
-    def process_element(item: tuple[Element, str]) -> tuple[str, dict, Element]:
+    provider = summarizer._detect_provider()
+    if provider == "stub" and not no_llm:
+        click.echo(
+            "Warning: no LLM provider configured. Using placeholder summaries.\n"
+            "  Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or ensure `claude` is in PATH.",
+            err=True,
+        )
+
+    def _process(item: tuple[Element, str]) -> tuple[str, dict[str, object]]:
         element, sha = item
-        summaries = summarizer.summarize(element, Summarizer.ANALYZE_LEVELS)
-
-        # Write full data record
-        data = {
+        summaries = summarizer.summarize(element, _ANALYZE_LEVELS)
+        storage.save_data(sha, {
             "path": element.path,
             "element_type": element.element_type,
             "name": element.name,
@@ -640,179 +676,186 @@ def analyze(path, db_path, api, model, force, workers):
             "end_line": element.end_line,
             "code": element.code,
             "levels": summaries,
-        }
-        storage.save_data(sha, data)
-
-        # Index record (compressed levels only)
-        index_entry = {
+        })
+        return sha, {
             "path": element.path,
             "element_type": element.element_type,
             "name": element.name,
             "levels": summaries,
         }
-        return sha, index_entry, element
 
     completed = 0
-    with click.progressbar(length=len(all_elements), label="Analyzing") as bar:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(process_element, item): item for item in all_elements}
+    with click.progressbar(length=len(pending), label="Summarizing") as bar:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_process, item): item for item in pending}
             for future in as_completed(futures):
                 try:
-                    sha, index_entry, element = future.result()
-                    index[sha] = index_entry
+                    sha, entry = future.result()
+                    index[sha] = entry
                     completed += 1
-                except Exception as e:
+                except (RuntimeError, OSError, ValueError):
                     elem, _ = futures[future]
-                    click.echo(f"\n  Error processing {elem.path}: {e}", err=True)
+                    logger.exception("Failed to process %s", elem.path)
                 bar.update(1)
 
     storage.save_index(index)
-    click.echo(f"\n✓ Analysis complete")
-    click.echo(f"  Indexed: {completed} elements")
-    click.echo(f"  Database: {pyramid_dir}")
+    click.echo(f"\nDone. Indexed {completed} elements → {storage.pyramid_dir}")
 
 
 # ── query ─────────────────────────────────────
 
+
 @cli.command()
-@click.argument("query")
-@click.option("--level", default=16, type=click.Choice(["4", "8", "16", "32", "64"]),
-              help="Word count level to search (default: 16)")
-@click.option("--type", "element_type", default=None,
-              type=click.Choice(["file", "function", "class"]),
-              help="Filter by element type")
-@click.option("--db-path", default=None, help="Override .pyramid/ location")
-@click.option("--limit", default=20, show_default=True, help="Max results to show")
-def query(query, level, element_type, db_path, limit):
+@click.argument("query_text")
+@click.option(
+    "--level",
+    default="16",
+    type=click.Choice(["4", "8", "16", "32", "64"]),
+    help="Summary level to search (default: 16).",
+)
+@click.option(
+    "--type",
+    "element_type",
+    default=None,
+    type=click.Choice(["file", "function", "class"]),
+    help="Filter by element type.",
+)
+@click.option("--db-path", default=None)
+@click.option("--limit", default=20, show_default=True, help="Max results.")
+def query(
+    query_text: str,
+    level: str,
+    element_type: str | None,
+    db_path: str | None,
+    limit: int,
+) -> None:
     """Search pyramid summaries by keyword."""
-    pyramid_dir = _find_pyramid_dir(db_path)
-    storage = StorageManager(pyramid_dir)
-    _require_initialized(storage)
+    storage = StorageManager(_pyramid_dir(db_path))
+    _require_init(storage)
 
     index = storage.load_index()
     if not index:
-        raise click.ClickException("No indexed elements found. Run: python pyramid_cli.py analyze .")
+        raise click.ClickException("No indexed elements. Run: uv run pyramid_cli.py analyze .")
 
-    query_lower = query.lower()
-    results = []
+    needle = query_text.lower()
+    results: list[tuple[dict[str, object], str, str]] = []
 
     for sha, entry in index.items():
         if element_type and entry.get("element_type") != element_type:
             continue
-
-        levels = entry.get("levels", {})
-        summary = levels.get(str(level), "")
-
-        if query_lower in summary.lower() or query_lower in entry.get("path", "").lower():
+        levels_data = entry.get("levels") or {}
+        summary = str(levels_data.get(level, ""))  # type: ignore[union-attr]
+        path_str = str(entry.get("path", ""))
+        if needle in summary.lower() or needle in path_str.lower():
             results.append((entry, summary, sha))
 
     if not results:
-        click.echo(f"No results for '{query}' at level {level}")
-        if element_type:
-            click.echo(f"(filtered by type: {element_type})")
+        click.echo(f"No results for '{query_text}' at level {level}.")
         return
 
-    click.echo(f"Found {len(results)} result(s) for '{query}' (level {level}):\n")
-    for entry, summary, sha in results[:limit]:
-        path = entry.get("path", "")
-        etype = entry.get("element_type", "file")
-        name = entry.get("name", "")
-
-        label = path if etype == "file" else f"{path}::{name}"
-        click.echo(f"  {label} ({etype})")
+    click.echo(f"{len(results)} result(s) for '{query_text}' (level {level}):\n")
+    for entry, summary, _sha in results[:limit]:
+        path_str = str(entry.get("path", ""))
+        etype = str(entry.get("element_type", "file"))
+        name = str(entry.get("name", ""))
+        label = path_str if etype == "file" else f"{path_str}::{name}"
+        click.echo(f"  {label}  [{etype}]")
         click.echo(f"    {summary}")
         click.echo()
 
     if len(results) > limit:
-        click.echo(f"  ... {len(results) - limit} more results (use --limit to show more)")
+        click.echo(f"  … {len(results) - limit} more (use --limit to show more)")
 
 
 # ── get ───────────────────────────────────────
 
+
 @cli.command()
 @click.argument("element_path")
-@click.option("--level", default=16, type=click.Choice(["4", "8", "16", "32", "64"]),
-              help="Word count level (default: 16)")
-@click.option("--show-code", is_flag=True, help="Display actual source code")
-@click.option("--db-path", default=None, help="Override .pyramid/ location")
+@click.option(
+    "--level",
+    default="16",
+    type=click.Choice(["4", "8", "16", "32", "64"]),
+    help="Summary level (default: 16).",
+)
+@click.option("--show-code", is_flag=True, help="Print the raw source code.")
+@click.option("--db-path", default=None)
 @click.option("--api", default=None, type=click.Choice(["anthropic", "openai"]))
 @click.option("--model", default=None)
-def get(element_path, level, show_code, db_path, api, model):
+def get(
+    element_path: str,
+    level: str,
+    show_code: bool,
+    db_path: str | None,
+    api: str | None,
+    model: str | None,
+) -> None:
     """Get pyramid summary for a specific code element."""
-    pyramid_dir = _find_pyramid_dir(db_path)
-    storage = StorageManager(pyramid_dir)
-    _require_initialized(storage)
+    storage = StorageManager(_pyramid_dir(db_path))
+    _require_init(storage)
 
     index = storage.load_index()
-
-    # Find matching entries by path prefix
-    matches = []
-    path_lower = element_path.lower().replace("\\", "/")
-
-    for sha, entry in index.items():
-        entry_path = entry.get("path", "").lower().replace("\\", "/")
-        if entry_path == path_lower or entry_path.startswith(path_lower):
-            matches.append((sha, entry))
+    needle = element_path.lower().replace("\\", "/")
+    matches = [
+        (sha, entry)
+        for sha, entry in index.items()
+        if str(entry.get("path", "")).lower().replace("\\", "/").startswith(needle)
+    ]
 
     if not matches:
         raise click.ClickException(
-            f"No indexed element found for '{element_path}'.\n"
-            "Run `python pyramid_cli.py list` to see available paths."
+            f"No element found for '{element_path}'.\n"
+            "Run `uv run pyramid_cli.py list` to see available paths."
         )
 
-    level_str = str(level)
-    level_int = int(level)
-
     for sha, entry in matches:
-        path = entry.get("path", "")
-        name = entry.get("name", "")
-        etype = entry.get("element_type", "file")
-        label = path if etype == "file" else f"{path}::{name}"
+        path_str = str(entry.get("path", ""))
+        name = str(entry.get("name", ""))
+        etype = str(entry.get("element_type", "file"))
+        label = path_str if etype == "file" else f"{path_str}::{name}"
 
-        # Check if level already in index (4/8/16)
-        cached_summary = entry.get("levels", {}).get(level_str)
+        # Fast path: level in index (4/8/16)
+        levels_data = entry.get("levels") or {}
+        summary = str(levels_data.get(level, ""))  # type: ignore[union-attr]
 
-        if cached_summary:
-            summary = cached_summary
-        else:
-            # Level 32/64: check data file
+        if not summary:
+            # Slow path: check or generate in data/<sha>.json
             data = storage.load_data(sha)
-            if data and level_str in data.get("levels", {}):
-                summary = data["levels"][level_str]
-            else:
-                # Generate on demand
-                if data is None:
-                    raise click.ClickException(
-                        f"Data file missing for {path}. Re-run analyze."
-                    )
-                config = storage.load_config()
-                effective_api = api or config.get("api", "anthropic")
-                summarizer = Summarizer(api=effective_api, model=model)
-                element = Element(
-                    path=path,
-                    element_type=etype,
-                    name=name,
-                    code=data.get("code", ""),
-                    start_line=data.get("start_line", 1),
-                    end_line=data.get("end_line", 1),
+            if data is None:
+                raise click.ClickException(
+                    f"Data file missing for '{path_str}'. Re-run analyze."
                 )
-                click.echo(f"Generating level {level} summary...", err=True)
-                new_summaries = summarizer.summarize(element, [level_int])
-                summary = new_summaries.get(level_str, "")
+            data_levels = data.get("levels") or {}
+            summary = str(data_levels.get(level, ""))  # type: ignore[union-attr]
+            if not summary:
+                config = storage.load_config()
+                effective_api = api or str(config.get("api", "anthropic"))
+                summarizer = Summarizer(api=effective_api, model=model)
+                click.echo(f"Generating level-{level} summary…", err=True)
+                result = summarizer.summarize(
+                    Element(
+                        path=path_str,
+                        element_type=etype,
+                        name=name,
+                        code=str(data.get("code", "")),
+                        start_line=int(data.get("start_line", 1)),  # type: ignore[arg-type]
+                        end_line=int(data.get("end_line", 1)),  # type: ignore[arg-type]
+                    ),
+                    (int(level),),
+                )
+                summary = result.get(level, "")
+                data_levels_mutable = dict(data_levels)  # type: ignore[arg-type]
+                data_levels_mutable[level] = summary
+                storage.save_data(sha, {**data, "levels": data_levels_mutable})  # type: ignore[arg-type]
 
-                # Cache it
-                data["levels"][level_str] = summary
-                storage.save_data(sha, data)
-
-        click.echo(f"{label} ({level} words):")
+        click.echo(f"{label}  (level {level})")
         click.echo(f"  {summary}")
 
         if show_code:
             data = storage.load_data(sha)
-            code = data.get("code", "") if data else ""
+            code = str(data.get("code", "")) if data else ""
             if code:
                 click.echo()
-                click.echo("Code:")
                 click.echo("─" * 72)
                 click.echo(code)
                 click.echo("─" * 72)
@@ -821,41 +864,49 @@ def get(element_path, level, show_code, db_path, api, model):
 
 # ── list ──────────────────────────────────────
 
+
 @cli.command("list")
-@click.option("--level", default=4, type=click.Choice(["4", "8", "16"]),
-              help="Word count level for summaries (default: 4)")
-@click.option("--type", "element_type", default="file",
-              type=click.Choice(["file", "function", "class", "all"]),
-              help="Filter by element type (default: file)")
-@click.option("--db-path", default=None, help="Override .pyramid/ location")
-def list_cmd(level, element_type, db_path):
-    """List indexed code elements with summaries."""
-    pyramid_dir = _find_pyramid_dir(db_path)
-    storage = StorageManager(pyramid_dir)
-    _require_initialized(storage)
+@click.option(
+    "--level",
+    default="4",
+    type=click.Choice(["4", "8", "16"]),
+    help="Summary level (default: 4).",
+)
+@click.option(
+    "--type",
+    "element_type",
+    default="file",
+    type=click.Choice(["file", "function", "class", "all"]),
+    help="Filter by element type (default: file).",
+)
+@click.option("--db-path", default=None)
+def list_cmd(level: str, element_type: str, db_path: str | None) -> None:
+    """List indexed code elements with their summaries."""
+    storage = StorageManager(_pyramid_dir(db_path))
+    _require_init(storage)
 
     index = storage.load_index()
     if not index:
-        raise click.ClickException("No indexed elements. Run: python pyramid_cli.py analyze .")
+        raise click.ClickException("No indexed elements. Run: uv run pyramid_cli.py analyze .")
 
-    # Group by path for clean display
-    seen_paths = {}
-    for sha, entry in index.items():
-        etype = entry.get("element_type", "file")
+    rows: dict[str, tuple[str, str]] = {}
+    for _sha, entry in index.items():
+        etype = str(entry.get("element_type", "file"))
         if element_type != "all" and etype != element_type:
             continue
-        path = entry.get("path", "")
-        summary = entry.get("levels", {}).get(str(level), "")
-        name = entry.get("name", "")
-        label = path if etype == "file" else f"{path}::{name}"
-        seen_paths[label] = (summary, etype)
+        path_str = str(entry.get("path", ""))
+        name = str(entry.get("name", ""))
+        levels_data = entry.get("levels") or {}
+        summary = str(levels_data.get(level, ""))  # type: ignore[union-attr]
+        label = path_str if etype == "file" else f"{path_str}::{name}"
+        rows[label] = (summary, etype)
 
-    if not seen_paths:
+    if not rows:
         click.echo(f"No {element_type} elements found.")
         return
 
-    click.echo(f"{element_type.capitalize()} elements ({len(seen_paths)} total):\n")
-    for label, (summary, etype) in sorted(seen_paths.items()):
+    click.echo(f"{element_type.capitalize()} elements ({len(rows)} total):\n")
+    for label, (summary, _etype) in sorted(rows.items()):
         click.echo(f"  {label}")
         if summary:
             click.echo(f"    {summary}")
@@ -863,4 +914,5 @@ def list_cmd(level, element_type, db_path):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     cli()

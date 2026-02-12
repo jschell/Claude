@@ -1,113 +1,104 @@
 #!/usr/bin/env python3
-"""pyramid-setup.py - Install and initialize pyramid-cli (cross-platform)
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""pyramid-setup.py — Install dependencies and initialize pyramid_cli.
 
 Usage:
-  python pyramid-setup.py              # Check deps + init only
-  python pyramid-setup.py --analyze    # Check deps + init + analyze current dir
-  python pyramid-setup.py --analyze PATH  # Analyze specific path
-
-Requirements: Python 3.8+, pip available in PATH
+    uv run pyramid-setup.py              # check deps + init
+    uv run pyramid-setup.py --analyze    # check deps + init + analyze current dir
+    uv run pyramid-setup.py --analyze PATH
 """
 
-import sys
+from __future__ import annotations
+
+import argparse
 import subprocess
-import shutil
+import sys
 from pathlib import Path
 
+_SCRIPT_NAME = "pyramid_cli.py"
 
-REQUIRED_PACKAGES = [
-    "click",
-    "anthropic",
+_REQUIRED: list[tuple[str, str]] = [
+    # (import_name, pip_name)
+    ("click", "click>=8.0"),
+    ("anthropic", "anthropic>=0.40"),
+]
+_OPTIONAL: list[tuple[str, str, str]] = [
+    # (import_name, pip_name, reason)
+    ("tree_sitter_languages", "tree-sitter-languages", "multi-language parsing"),
 ]
 
-OPTIONAL_PACKAGES = {
-    "tree_sitter_languages": "tree-sitter-languages",
-}
 
-SCRIPT_NAME = "pyramid_cli.py"
-
-
-def find_cli_script() -> Path:
-    """Locate pyramid_cli.py relative to this script."""
-    here = Path(__file__).parent
-    candidate = here / SCRIPT_NAME
-    if candidate.exists():
-        return candidate
-    raise SystemExit(
-        f"Error: {SCRIPT_NAME} not found in {here}\n"
-        "Ensure pyramid_cli.py is in the same directory as this script."
-    )
-
-
-def check_package(import_name: str) -> bool:
-    """Return True if a package is importable."""
-    try:
-        __import__(import_name)
-        return True
-    except ImportError:
-        return False
-
-
-def install_package(pip_name: str) -> bool:
-    """Install a package via pip. Returns True on success."""
+def _importable(name: str) -> bool:
+    """Return True if *name* can be imported without error."""
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", pip_name],
+        [sys.executable, "-c", f"import {name}"],
         capture_output=True,
-        text=True,
     )
+    return result.returncode == 0
+
+
+def _uv_add(pip_name: str) -> bool:
+    """Install a package with `uv add`. Returns True on success."""
+    result = subprocess.run(["uv", "add", pip_name], capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  Warning: pip install {pip_name} failed:\n  {result.stderr.strip()}")
+        print(f"  Warning: uv add {pip_name} failed:\n  {result.stderr.strip()}")
         return False
     return True
 
 
 def ensure_dependencies() -> None:
-    """Install missing required packages."""
-    missing = [pkg for pkg in REQUIRED_PACKAGES if not check_package(pkg)]
+    """Ensure all required packages are present, install via uv if not."""
+    missing = [
+        (import_name, pip_name)
+        for import_name, pip_name in _REQUIRED
+        if not _importable(import_name)
+    ]
 
     if missing:
-        print(f"Installing required packages: {', '.join(missing)}")
-        for pkg in missing:
-            print(f"  Installing {pkg}...", end=" ", flush=True)
-            if install_package(pkg):
+        print(f"Installing {len(missing)} required package(s) via uv…")
+        for import_name, pip_name in missing:
+            print(f"  uv add {pip_name}… ", end="", flush=True)
+            if _uv_add(pip_name):
                 print("OK")
             else:
-                raise SystemExit(f"Failed to install {pkg}. Install manually: pip install {pkg}")
+                sys.exit(f"Failed to install {pip_name}. Try manually: uv add {pip_name}")
     else:
         print("Required packages: OK")
 
-    # Optional packages (non-fatal)
-    for import_name, pip_name in OPTIONAL_PACKAGES.items():
-        if not check_package(import_name):
-            print(f"Optional: {pip_name} not installed (enables multi-language parsing)")
-            print(f"  To install: pip install {pip_name}")
+    for import_name, pip_name, reason in _OPTIONAL:
+        if not _importable(import_name):
+            print(f"Optional ({reason}): uv add {pip_name}")
 
 
-def is_pyramid_initialized(directory: Path) -> bool:
-    """Return True if .pyramid/ exists in directory."""
-    return (directory / ".pyramid").exists()
+def find_cli_script() -> Path:
+    """Locate pyramid_cli.py relative to this script."""
+    candidate = Path(__file__).parent / _SCRIPT_NAME
+    if candidate.exists():
+        return candidate
+    sys.exit(
+        f"Error: {_SCRIPT_NAME} not found in {Path(__file__).parent}\n"
+        "Ensure pyramid_cli.py is in the same directory as this script."
+    )
 
 
 def run_cli(cli_script: Path, args: list[str]) -> int:
-    """Run pyramid_cli.py with given arguments."""
-    result = subprocess.run(
-        [sys.executable, str(cli_script)] + args,
-        cwd=Path.cwd(),
-    )
+    """Run pyramid_cli.py with the given arguments via uv."""
+    result = subprocess.run(["uv", "run", str(cli_script), *args])
     return result.returncode
 
 
-def main():
-    import argparse
-
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Set up pyramid-cli for codebase navigation.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python pyramid-setup.py                 # init only
-  python pyramid-setup.py --analyze       # init + analyze current dir
-  python pyramid-setup.py --analyze src/  # init + analyze src/
+  uv run pyramid-setup.py                 # init only
+  uv run pyramid-setup.py --analyze       # init + analyze current dir
+  uv run pyramid-setup.py --analyze src/  # init + analyze src/
         """,
     )
     parser.add_argument(
@@ -115,13 +106,13 @@ Examples:
         nargs="?",
         const=".",
         metavar="PATH",
-        help="Run pyramid analyze after init (default: current directory)",
+        help="Run pyramid analyze after init (default: current directory).",
     )
     parser.add_argument(
         "--api",
         choices=["anthropic", "openai"],
         default="anthropic",
-        help="LLM provider (default: anthropic)",
+        help="LLM provider (default: anthropic).",
     )
     args = parser.parse_args()
 
@@ -130,39 +121,32 @@ Examples:
 
     print("=== Pyramid CLI Setup ===\n")
 
-    # Step 1: Dependencies
-    print("Checking dependencies...")
+    print("Checking dependencies…")
     ensure_dependencies()
     print()
 
-    # Step 2: Initialize
-    if is_pyramid_initialized(cwd):
-        print(f"Already initialized in {cwd} (.pyramid/ exists)")
+    pyramid_dir = cwd / ".pyramid"
+    if pyramid_dir.exists():
+        print(f"Already initialized ({pyramid_dir} exists).")
     else:
-        print(f"Initializing pyramid in {cwd}...")
-        code = run_cli(cli_script, ["init", "--api", args.api])
-        if code != 0:
-            raise SystemExit("pyramid init failed.")
+        print(f"Initializing in {cwd}…")
+        if run_cli(cli_script, ["init", "--api", args.api]) != 0:
+            sys.exit("pyramid init failed.")
 
     print()
 
-    # Step 3: Analyze (optional)
     if args.analyze is not None:
         analyze_path = Path(args.analyze).resolve()
         if not analyze_path.exists():
-            raise SystemExit(f"Error: path does not exist: {analyze_path}")
-
-        print(f"Analyzing {analyze_path}...")
-        code = run_cli(cli_script, ["analyze", str(analyze_path)])
-        if code != 0:
-            raise SystemExit("pyramid analyze failed.")
+            sys.exit(f"Error: path does not exist: {analyze_path}")
+        print(f"Analyzing {analyze_path}…")
+        if run_cli(cli_script, ["analyze", str(analyze_path)]) != 0:
+            sys.exit("pyramid analyze failed.")
     else:
-        print("To index this codebase, run:")
-        print(f"  python {cli_script.name} analyze .")
-        print()
-        print("Then navigate with:")
-        print(f"  python {cli_script.name} list --level 4")
-        print(f"  python {cli_script.name} query 'TOPIC' --level 8")
+        print("Next steps:")
+        print(f"  uv run {cli_script.name} analyze .")
+        print(f"  uv run {cli_script.name} list --level 4")
+        print(f"  uv run {cli_script.name} query 'TOPIC' --level 8")
 
     print("\nDone.")
 
