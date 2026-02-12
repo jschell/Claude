@@ -6,7 +6,7 @@
 #   "anthropic>=0.40",
 # ]
 # [tool.uv]
-# exclude-newer = "2026-02-12"
+# exclude-newer = "2026-02-12T00:00:00Z"
 # ///
 # Optional extras (install separately if needed):
 #   uv add tree-sitter-languages   # multi-language parsing (recommended)
@@ -523,6 +523,7 @@ class Summarizer:
             capture_output=True,
             text=True,
             timeout=60,
+            stdin=subprocess.DEVNULL,
         )
         if result.returncode != 0:
             raise RuntimeError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}")
