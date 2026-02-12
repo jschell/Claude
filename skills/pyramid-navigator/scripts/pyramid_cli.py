@@ -616,6 +616,29 @@ def _require_init(storage: StorageManager) -> None:
         )
 
 
+# Candidate files where a project documents its AI agent conventions.
+_AGENT_DOC_CANDIDATES = ("CLAUDE.md", "AGENTS.md", ".claude/CLAUDE.md")
+
+
+def _check_agent_guidance(root: Path) -> bool:
+    """Return True if any agent-convention file in *root* mentions pyramid.
+
+    Searches CLAUDE.md, AGENTS.md, and .claude/CLAUDE.md for the word
+    'pyramid' (case-insensitive).  A loose keyword match is intentional —
+    the goal is to detect that the author has thought about it, not to
+    validate the content.
+    """
+    for candidate in _AGENT_DOC_CANDIDATES:
+        path = root / candidate
+        if path.exists():
+            try:
+                if "pyramid" in path.read_text(encoding="utf-8", errors="ignore").lower():
+                    return True
+            except OSError:
+                pass
+    return False
+
+
 # ─────────────────────────────────────────────
 # SECTION: CLI commands
 # ─────────────────────────────────────────────
@@ -646,7 +669,21 @@ def init(db_path: str | None, api: str) -> None:
         return
     storage.init(api=api)
     click.echo(f"Initialized pyramid generator at {storage.pyramid_dir}")
-    click.echo(f"\nNext: uv run pyramid_cli.py analyze .")
+
+    # Warn if no CLAUDE.md / AGENTS.md documents how to use this skill.
+    if not _check_agent_guidance(Path.cwd()):
+        click.echo(
+            "\nWarning: no pyramid guidance found in CLAUDE.md or AGENTS.md.\n"
+            "AI agents won't know to use this skill unless you document it.\n"
+            "Add a section like:\n\n"
+            "  ## Codebase Navigation\n"
+            "  This project is indexed with pyramid-navigator.\n"
+            "  Use `uv run skills/pyramid-navigator/scripts/pyramid_cli.py` to explore it.\n"
+            "  Follow the Progressive Refinement Protocol in SKILL.md before reading source.\n",
+            err=True,
+        )
+
+    click.echo("\nNext: uv run pyramid_cli.py analyze .")
 
 
 # ── analyze ───────────────────────────────────
