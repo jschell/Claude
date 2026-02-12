@@ -20,6 +20,8 @@ uv run scripts/pyramid_cli.py init
 uv run scripts/pyramid_cli.py analyze .
 ```
 
+> **`.pyramid/` location:** Always `init` and `analyze` from the **root of the repo being analyzed** — the `.pyramid/` directory is created in the current working directory. If analyzing a repo at `/path/to/project`, run commands with that as CWD or pass it explicitly: `analyze /path/to/project`. Do not create `.pyramid/` inside the pyramid-navigator skill directory itself.
+
 No API key needed when running inside Claude Code — uses `claude` CLI automatically.
 
 ## Core Commands
@@ -70,6 +72,7 @@ uv run scripts/pyramid_cli.py get src/module.py --level 64 --show-code
 - Multiple candidates at level 16 → `get` each at level 32 to compare
 - Unfamiliar project → always start with `list --level 4`
 - Re-index after code changes → `analyze .` (skips unchanged files via content hash)
+- Always `init`/`analyze` from the target repo root — `.pyramid/` is created in CWD
 - `.gs` files (Google Apps Script) are indexed as JavaScript — functions and classes extracted normally
 
 ## See Also
