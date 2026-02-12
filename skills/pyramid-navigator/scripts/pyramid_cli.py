@@ -182,6 +182,7 @@ def _write_json(path: Path, data: dict[str, object]) -> None:
 SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
+    ".gs": "javascript",  # Google Apps Script — parsed as JavaScript
     ".ts": "typescript",
     ".go": "go",
     ".rs": "rust",

@@ -70,6 +70,7 @@ uv run scripts/pyramid_cli.py get src/module.py --level 64 --show-code
 - Multiple candidates at level 16 → `get` each at level 32 to compare
 - Unfamiliar project → always start with `list --level 4`
 - Re-index after code changes → `analyze .` (skips unchanged files via content hash)
+- `.gs` files (Google Apps Script) are indexed as JavaScript — functions and classes extracted normally
 
 ## See Also
 
