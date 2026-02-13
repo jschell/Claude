@@ -37,6 +37,30 @@ Files to create in order:
 4. `.github/workflows/ci.yml` — minimal stub with `# TODO` markers
 5. Stack entry point — `main.py`, `main.go`, `index.js`, etc. (single empty file)
 
+### Step 2b — Initialize project context
+
+Check for `project-setup` skill:
+
+```bash
+ls ~/.claude/skills/project-setup/SKILL.md 2>/dev/null || \
+ls skills/project-setup/SKILL.md 2>/dev/null
+```
+
+**If found** → invoke `project-setup` now (before the initial commit). It will create `.claude/CLAUDE.md` and `AGENTS.md` with the correct commands for the detected stack.
+
+**If not found** → create a minimal stub instead:
+
+```markdown
+# <ProjectName>
+
+## Commands
+- Test:  # TODO
+- Lint:  # TODO
+- Build: # TODO
+```
+
+Save to `.claude/CLAUDE.md`.
+
 ## Phase 3 — README
 
 Follow jschell's style (references/readme-style-guide.md). Non-negotiables:
@@ -73,7 +97,8 @@ git commit -m "feat: initial scaffold
 
 - README, .gitignore, MIT license
 - GitHub Actions CI stub
-- <stack> project structure"
+- <stack> project structure
+- .claude/CLAUDE.md with project commands"
 ```
 
 Tag before any real code: `git tag v0.0.0`
@@ -110,5 +135,6 @@ jobs:
 
 ## Integration
 
+- During init → invoke `project-setup` skill (step 2b) to create `.claude/CLAUDE.md`
 - After init → use `gh-release` skill to add versioned release workflow and Dependabot
 - For web sessions → use `session-start-hook` to wire up test/lint on startup
