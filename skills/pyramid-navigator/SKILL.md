@@ -74,6 +74,7 @@ uv run scripts/pyramid_cli.py get src/module.py --level 64 --show-code
 - Re-index after code changes → `analyze .` (skips unchanged files via content hash)
 - Always `init`/`analyze` from the target repo root — `.pyramid/` is created in CWD
 - `.gs` files (Google Apps Script) are indexed as JavaScript — functions and classes extracted normally
+- `.ps1`/`.psm1` files (PowerShell) are indexed via tree-sitter (requires `tree-sitter-language-pack`) or regex fallback
 
 ## See Also
 
