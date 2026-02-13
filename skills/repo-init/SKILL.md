@@ -27,7 +27,7 @@ Ask these before touching anything:
 mkdir -p <name>
 cd <name>
 git init
-mkdir -p .github/workflows src tests docs
+mkdir -p .github/workflows src tests docs .gemini
 ```
 
 Files to create in order:
@@ -36,15 +36,15 @@ Files to create in order:
 3. `LICENSE` — MIT by default (see Quick Reference below)
 4. `.github/workflows/ci.yml` — minimal stub with `# TODO` markers
 5. Stack entry point — `main.py`, `main.go`, `index.js`, etc. (single empty file)
+6. `.gemini/settings.json` — redirect Gemini CLI to read `AGENTS.md`
 
 ### Step 2b — Initialize project context
 
-Check for `project-setup` skill:
+Check if `project-setup` skill exists at either location:
+- `~/.claude/skills/project-setup/SKILL.md` (global)
+- `skills/project-setup/SKILL.md` (project-local)
 
-```bash
-ls ~/.claude/skills/project-setup/SKILL.md 2>/dev/null || \
-ls skills/project-setup/SKILL.md 2>/dev/null
-```
+Use Glob or Read — not shell commands.
 
 **If found** → invoke `project-setup` now (before the initial commit). It will create `.claude/CLAUDE.md` and `AGENTS.md` with the correct commands for the detected stack.
 
@@ -98,7 +98,8 @@ git commit -m "feat: initial scaffold
 - README, .gitignore, MIT license
 - GitHub Actions CI stub
 - <stack> project structure
-- .claude/CLAUDE.md with project commands"
+- .claude/CLAUDE.md with project commands
+- .gemini/settings.json redirecting Gemini CLI to AGENTS.md"
 ```
 
 Tag before any real code: `git tag v0.0.0`
@@ -132,6 +133,16 @@ jobs:
 ```
 
 **Common .gitignore additions by stack** — see references/gitignore-templates.md
+
+**`.gemini/settings.json`** (redirects Gemini CLI to read `AGENTS.md`):
+```json
+{
+  "context": {
+    "fileName": "AGENTS.md"
+  }
+}
+```
+Note: Gemini reads `AGENTS.md` as static context only — skills listed there are reference, not invocable.
 
 ## Integration
 
