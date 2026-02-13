@@ -26,7 +26,7 @@ Ask these before touching anything:
 ```bash
 mkdir -p <name>
 cd <name>
-git init
+git init -b main
 mkdir -p .github/workflows src tests docs .gemini
 ```
 
