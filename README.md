@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 12,042 tokens across 27 skills** (avg 446 tokens/skill)
+**Total: 13,368 tokens across 29 skills** (avg 461 tokens/skill)
 
 ## Quick Start
 
@@ -76,6 +76,13 @@ ln -s $(pwd)/skills ~/.claude/skills
 | [using-git-worktrees](skills/using-git-worktrees/) | 482 | Isolated workspace setup |
 | [using-superpowers](skills/using-superpowers/) | 291 | Skill invocation protocol |
 | [writing-skills](skills/writing-skills/) | 522 | Create new skills (TDD for docs) |
+
+### Repository Setup
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [repo-init](skills/repo-init/) | 579 | Scaffold new repos with README, .gitignore, MIT license, CI stub |
+| [gh-release](skills/gh-release/) | 747 | GitHub Actions CI, keyword-triggered releases, Dependabot auto-merge |
 
 ### Meta
 

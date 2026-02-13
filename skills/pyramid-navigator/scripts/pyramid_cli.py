@@ -9,8 +9,8 @@
 # exclude-newer = "2026-02-12T00:00:00Z"
 # ///
 # Optional extras (install separately if needed):
-#   uv add tree-sitter-languages   # multi-language parsing (recommended)
-#   uv add openai                  # OpenAI provider alternative
+#   uv add tree-sitter-language-pack   # multi-language parsing, 165+ langs incl. PowerShell (recommended)
+#   uv add openai                      # OpenAI provider alternative
 """pyramid_cli.py — Pyramid Summary Generator CLI.
 
 Indexes a codebase with multi-level LLM summaries for progressive navigation.
@@ -71,7 +71,7 @@ except ImportError:
     _OPENAI_AVAILABLE = False
 
 try:
-    import tree_sitter_languages as _ts_languages
+    import tree_sitter_language_pack as _ts_languages
 
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -182,6 +182,7 @@ def _write_json(path: Path, data: dict[str, object]) -> None:
 SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
+    ".gs": "javascript",  # Google Apps Script — parsed as JavaScript
     ".ts": "typescript",
     ".go": "go",
     ".rs": "rust",
@@ -190,6 +191,8 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".cpp": "cpp",
     ".rb": "ruby",
     ".php": "php",
+    ".ps1": "powershell",
+    ".psm1": "powershell",  # PowerShell module files — same syntax as .ps1
 }
 
 _IGNORE_DIRS = frozenset({
@@ -213,6 +216,7 @@ _FUNC_TYPES: dict[str, list[str]] = {
     "cpp": ["function_definition"],
     "ruby": ["method"],
     "php": ["function_definition", "method_declaration"],
+    "powershell": ["function_statement", "filter_statement"],
 }
 _CLASS_TYPES: dict[str, list[str]] = {
     "python": ["class_definition"],
@@ -225,6 +229,7 @@ _CLASS_TYPES: dict[str, list[str]] = {
     "go": ["type_declaration"],
     "c": ["struct_specifier"],
     "cpp": ["class_specifier", "struct_specifier"],
+    "powershell": ["class_statement"],
 }
 
 
@@ -332,6 +337,14 @@ class CodeParser:
             ".rs": (
                 re.compile(r"^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*[<(]"),
                 re.compile(r"^(?:pub\s+)?(?:struct|impl|enum)\s+(\w+)"),
+            ),
+            ".ps1": (
+                re.compile(r"^(?:function|filter)\s+([\w][\w-]*)\s*(?:\(|{|\s*$)", re.IGNORECASE),
+                re.compile(r"^class\s+(\w+)", re.IGNORECASE),
+            ),
+            ".psm1": (
+                re.compile(r"^(?:function|filter)\s+([\w][\w-]*)\s*(?:\(|{|\s*$)", re.IGNORECASE),
+                re.compile(r"^class\s+(\w+)", re.IGNORECASE),
             ),
         }
         default_func = re.compile(r"^(?:def|func|function|fn|sub)\s+(\w+)")

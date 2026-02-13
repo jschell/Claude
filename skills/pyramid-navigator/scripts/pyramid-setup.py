@@ -27,7 +27,7 @@ _REQUIRED: list[tuple[str, str]] = [
 ]
 _OPTIONAL: list[tuple[str, str, str]] = [
     # (import_name, pip_name, reason)
-    ("tree_sitter_languages", "tree-sitter-languages", "multi-language parsing"),
+    ("tree_sitter_language_pack", "tree-sitter-language-pack", "multi-language parsing (165+ langs incl. PowerShell)"),
 ]
 
 
