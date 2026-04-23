@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 13,368 tokens across 29 skills** (avg 461 tokens/skill)
+**Total: 14,267 tokens across 30 skills** (avg 476 tokens/skill)
 
 ## Quick Start
 
@@ -65,6 +65,12 @@ ln -s $(pwd)/skills ~/.claude/skills
 |-------|--------|-------------|
 | [archive-url](skills/archive-url/) | 209 | Archive URLs to Wayback Machine for preservation |
 | [archive-retrieve](skills/archive-retrieve/) | 275 | Retrieve/search archived versions of URLs |
+
+### Strategy & Analysis
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [wardley-mapping](skills/wardley-mapping/) | 899 | Wardley Map analysis: OWM DSL, evolution rationale table, strategic commentary |
 
 ### Tools & Reference
 
