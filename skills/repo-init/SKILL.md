@@ -147,5 +147,6 @@ Note: Gemini reads `AGENTS.md` as static context only — skills listed there ar
 ## Integration
 
 - During init → invoke `project-setup` skill (step 2b) to create `.claude/CLAUDE.md`
+- Python stack → apply `python-standards` for uv/ruff/pyright/pytest conventions
 - After init → use `gh-release` skill to add versioned release workflow and Dependabot
 - For web sessions → use `session-start-hook` to wire up test/lint on startup

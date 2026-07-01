@@ -2,7 +2,7 @@
 
 A curated collection of optimized skills for Claude Code.
 
-**Total: 14,267 tokens across 30 skills** (avg 476 tokens/skill)
+**Total: 14,863 tokens across 31 skills** (avg 479 tokens/skill)
 
 ## Quick Start
 
@@ -89,6 +89,12 @@ ln -s $(pwd)/skills ~/.claude/skills
 |-------|--------|-------------|
 | [repo-init](skills/repo-init/) | 579 | Scaffold new repos with README, .gitignore, MIT license, CI stub |
 | [gh-release](skills/gh-release/) | 747 | GitHub Actions CI, keyword-triggered releases, Dependabot auto-merge |
+
+### Language Standards
+
+| Skill | Tokens | Description |
+|-------|--------|-------------|
+| [python-standards](skills/python-standards/) | 596 | uv package management, ruff/pyright tooling, pytest and exception-handling defaults |
 
 ### Meta
 

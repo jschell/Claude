@@ -113,11 +113,12 @@ Run from workspace: `npm test -w packages/core`
 **Python project:**
 ```markdown
 ## Commands
-- Test: `pytest`
-- Lint: `ruff check .`
-- Type check: `mypy .`
-- Format: `black .`
+- Test: `uv run --frozen pytest`
+- Lint: `uv run --frozen ruff check . --fix`
+- Type check: `uv run --frozen pyright`
+- Format: `uv run --frozen ruff format .`
 ```
+Full conventions (package management, testing, exceptions): see [python-standards](../python-standards/SKILL.md).
 
 **With autonomous work:**
 ```markdown
